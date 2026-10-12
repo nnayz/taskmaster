@@ -27,7 +27,7 @@ the complete installation flow.
 | Section | What it covers |
 |---------|----------------|
 | [Getting started](getting-started.md) | First project, first session, first quit |
-| [The workbench](workbench.md) | Sidebar, inspector, lineage tree, overview |
+| [The workbench](workbench.md) | Sidebar, panel tabs, terminal, overview |
 | [Keyboard](keyboard.md) | Every shortcut that matters |
 | [Agents and status](agents.md) | Catalog, resume, what the colors mean |
 | [Worktrees](worktrees.md) | Isolated checkouts for parallel edits |

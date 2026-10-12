@@ -386,6 +386,13 @@ tokio::spawn(async move { clone_repository(request).await });
         }
 
         let mut prefs = Prefs {
+            workspace_tabs: Some(vec![
+                zeus.id.clone(),
+                mldrills.id.clone(),
+                pharos_labs.id.clone(),
+                settings.id.clone(),
+            ]),
+            last_active_workspace: Some(zeus.id.clone()),
             sidebar_project_order: vec![
                 zeus.id.clone(),
                 mldrills.id.clone(),
@@ -407,6 +414,9 @@ tokio::spawn(async move { clone_repository(request).await });
             prefs.inspector_width = 480.0;
             prefs.inspector_tab = InspectorTab::Artifacts;
         }
+        prefs
+            .workspace_inspector_tabs
+            .insert(zeus.id.clone(), prefs.inspector_tab);
         Self {
             list: SessionListResult {
                 sessions,

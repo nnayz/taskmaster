@@ -3,6 +3,13 @@
 Zeus is a three-pane machine. Learn the panes and the rest of the product
 falls into place.
 
+## Workspaces
+
+The sidebar displays all workspaces and their sessions together. Select a
+workspace heading or session to activate it. `⌘O` opens the chooser, where
+**Open folder…** adds a workspace. Each workspace
+remembers its selected session, open panel tabs, and active tab.
+
 ## Sidebar
 
 Projects group sessions. Each row is one agent or shell: title, host badge,
@@ -22,8 +29,8 @@ Useful moves:
 - **Reorder** a row inside its project with `⌃⌘↑` and `⌃⌘↓`.
 - **Needs you** is `⌘⇧J`. It walks sessions that are blocked on input.
 
-The footer can show an **Update to …** pill. That is the only place an
-available update lives until you click it. See [Updates](updates.md).
+The footer contains the account menu for usage, settings, and updates. It can
+also show an **Update to …** pill. See [Updates](updates.md).
 
 ## Terminal
 
@@ -34,63 +41,54 @@ usual (`⌘C` / `⌘V`). Find is `⌘F`, then `⌘G` / `⌘⇧G`. Font size is `
 `⌘J` opens a second, auxiliary shell under the same session. Use it for git,
 tests, or a one-off command without stealing the agent's PTY.
 
-When a session belongs to a spawn family (a lead plus children), a compact
-tab strip sits above the terminal. Switch with the mouse or, in the tree
-view, with the arrow keys.
-
-## Tabs and the workflow tree
-
-A family of spawned sessions can be shown two ways:
-
-- **Tabs** keep the terminal on screen and list the family as chips.
-- **Tree** replaces the terminal with the genealogy: each node is the
-  agent's mark, a caption with the title and status, and rails to its
-  children. A working node wears a spinner around the mark.
-
-Open the tree from the **Tabs / Tree** control, or from the command palette
-(**Agent Workflow Tree**). In the tree: `↑` `↓` move, Return or a
-double-click opens that session's terminal, Esc returns to tabs.
-
-Use tabs when you are in the conversation. Use the tree when you are
-conducting.
+Spawned sessions remain grouped under their parent in the sidebar. Select any
+row to open its terminal.
 
 ## Inspector
 
-`⌘⇧D` shows or hides it. Four tabs:
+`⌘⇧D` shows or hides the panel. Use **+** to open a tab, select a tab to
+switch views, and use its close button to remove it. Open tabs and the active
+selection are remembered for each workspace.
 
 | Tab | Job |
 |-----|-----|
-| **Info** | Session briefing: identity, attention, location, lifecycle, lineage, and runtime |
+| **Details** | Session briefing, identity, attention, lifecycle, runtime, artifacts, ports, and pull requests |
 | **Review** | Git workspace for this checkout: repository header, branch picker, pull-request navigation, and the live diff. Stage and commit stay on the working tree |
-| **Code** | Worktree-scoped Changed / All files tree and the existing file viewer. Word wrap is a Settings toggle |
-| **Artifacts** | Ports the session opened, pull requests it mentioned, and other finds |
+| **Files** | Worktree-scoped Changed / All files tree. Opening a file creates a named editor tab |
+| **Terminal** | An independent shell in the current workspace; open more than one |
+| **Browser** | An embedded web page with an address field and navigation controls; open more than one |
+
+Closing a Terminal tab leaves its shell running and available in the sidebar.
+Closing an edited file requires saving or reverting its changes. `⌘W` closes
+the active panel tab while the panel has focus; in the main terminal it closes
+the selected session. Arrow keys browse the tab strip when a tab has focus.
 
 Review is how Zeus earns the "accept the work" claim. Let the agent finish,
 then read the diff in the same window you used to watch it.
 
-Code opens on **Changed**, using the same staged, working-tree, rename,
+Files opens on **Changed**, using the same staged, working-tree, rename,
 conflict, and untracked status data as Review. Switch to **All files** to browse
 the selected local session's repository; directories load only when expanded,
 and Git-ignored entries stay out of the tree. Opening a path from Review,
-Quick Open, or a terminal reference reveals it in the tree and reuses the same
-viewer below it. `⌘⇧E` opens Code and focuses the tree. Type to filter, use
+Quick Open, or a terminal reference opens a named file tab. `⌘⇧E` opens Files
+and focuses the tree. Type to filter, use
 `↑` / `↓` to move, `→` / `←` to expand or collapse, Return to open, and Esc
 or Tab to return focus to the viewer. Non-repository sessions can still use
 All files, while Changed explains that Git status is unavailable. Remote
 sessions remain view-only and are not browsed through the local filesystem.
 
-Info answers the quick briefing questions for the selected session: what kind
+Details answers the quick briefing questions for the selected session: what kind
 of agent it is, where it runs, whether it needs you, when it last completed a
 turn, whether a remote process can survive disconnect, and how it relates to
 parent, child, and `⌘J` workbench sessions. Sleeping and ended sessions explain
 their lifecycle state and resumability. Paths, timestamps, and session IDs can
 be copied from the panel.
 
-Info keeps Git to a one-shot working-tree summary that jumps to Review; it does
+Details keeps Git to a one-shot working-tree summary that jumps to Review; it does
 not poll in the background, show pull-request content, or mutate the repository.
-Artifacts and listening ports are counts that jump to Artifacts. Installation-
-level usage remains in the account menu; Info only shows usage when Zeus can
-attribute it to the selected session.
+Artifacts and listening ports appear in the same Details tab. Installation-
+level usage remains in the account menu at the bottom of the sidebar; Details
+only shows usage when Zeus can attribute it to the selected session.
 
 ## Session overview
 

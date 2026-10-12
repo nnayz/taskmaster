@@ -1884,7 +1884,14 @@ impl PlatformWindow for MacWindow {
     #[cfg(any(test, feature = "test-support"))]
     fn render_to_image(&self, scene: &gpui::Scene) -> Result<RgbaImage> {
         let mut this = self.0.lock();
-        this.renderer.render_to_image(scene)
+        // Occluded windows keep a 1px backing surface while idle. A requested
+        // preview capture needs the content dimensions, then releases that
+        // temporary surface again when the window is still occluded.
+        let full_size = this.content_size().to_device_pixels(this.scale_factor());
+        this.renderer.update_drawable_size(full_size);
+        let image = this.renderer.render_to_image(scene);
+        this.update_backing_surface();
+        image
     }
 
     fn a11y_init(&self, callbacks: gpui::A11yCallbacks) {

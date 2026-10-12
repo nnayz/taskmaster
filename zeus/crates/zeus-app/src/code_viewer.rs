@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Context, CursorStyle, FocusHandle, Focusable,
-    FontWeight, HighlightStyle, KeyDownEvent, ListHorizontalSizingBehavior, MouseButton,
+    Animation, AnimationExt, AnyElement, App, Context, CursorStyle, EventEmitter, FocusHandle,
+    Focusable, FontWeight, HighlightStyle, KeyDownEvent, ListHorizontalSizingBehavior, MouseButton,
     MouseDownEvent, Render, ScrollStrategy, SharedString, StyledText, Task, TextRun,
     UniformListScrollHandle, Window, canvas, div, font, prelude::*, px, rgba, uniform_list,
 };
@@ -74,6 +74,7 @@ enum SaveStatus {
 
 #[derive(Clone, Debug)]
 enum PendingTransition {
+    Close,
     Workspace(Option<PathBuf>),
     Open {
         cwd: PathBuf,
@@ -428,7 +429,16 @@ pub struct CodeViewer {
     selection_dragging: bool,
     word_wrap: bool,
     viewport_width: f32,
+    show_file_tree: bool,
 }
+
+#[derive(Clone, Debug)]
+pub(crate) enum CodeViewerEvent {
+    OpenFile { cwd: PathBuf, reference: String },
+    CloseReady,
+}
+
+impl EventEmitter<CodeViewerEvent> for CodeViewer {}
 
 impl CodeViewer {
     pub fn new(
@@ -477,6 +487,21 @@ impl CodeViewer {
             selection_dragging: false,
             word_wrap,
             viewport_width,
+            show_file_tree: true,
+        }
+    }
+
+    pub(crate) fn set_file_tree_visible(&mut self, visible: bool) {
+        self.show_file_tree = visible;
+    }
+
+    pub(crate) fn request_close(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.must_preserve_document() {
+            self.pending_transition = Some(PendingTransition::Close);
+            cx.notify();
+            false
+        } else {
+            true
         }
     }
 
@@ -872,6 +897,10 @@ impl CodeViewer {
                     return;
                 };
                 let reference = path.to_string_lossy().into_owned();
+                cx.emit(CodeViewerEvent::OpenFile {
+                    cwd: cwd.clone(),
+                    reference: reference.clone(),
+                });
                 self.pending_tree_reference = Some(reference.clone());
                 self.open_reference_inner(cwd, reference, true, cx);
             }
@@ -902,7 +931,7 @@ impl CodeViewer {
         match &self.pending_transition {
             Some(PendingTransition::Workspace(cwd)) => self.workspace_cwd != *cwd,
             Some(PendingTransition::Open { cwd, .. }) => self.workspace_cwd.as_ref() != Some(cwd),
-            None => false,
+            Some(PendingTransition::Close) | None => false,
         }
     }
 
@@ -1274,19 +1303,17 @@ impl CodeViewer {
         };
         cx.notify();
 
-        let tokio = self.tokio.clone();
         let history_cwd = cwd.clone();
         self._load_task = Some(cx.spawn(async move |this, cx| {
             let task_reference = reference.clone();
-            let result = tokio
-                .spawn_blocking(move || -> Result<_, CodeIntelligenceError> {
+            let result = cx
+                .background_spawn(async move {
                     let intelligence = CodeIntelligence::for_session(&cwd)?;
                     let snapshot = intelligence.open_reference(&task_reference)?;
-                    Ok((intelligence, snapshot))
+                    Ok::<_, CodeIntelligenceError>((intelligence, snapshot))
                 })
                 .await
-                .map_err(|error| format!("Code viewer stopped: {error}"))
-                .and_then(|result| result.map_err(|error| error.to_string()));
+                .map_err(|error| error.to_string());
             let _ = this.update(cx, |this, cx| {
                 if this.generation != generation {
                     return;
@@ -1337,6 +1364,7 @@ impl CodeViewer {
             return;
         };
         match pending {
+            PendingTransition::Close => cx.emit(CodeViewerEvent::CloseReady),
             PendingTransition::Workspace(cwd) => self.apply_workspace(cwd, cx),
             PendingTransition::Open {
                 cwd,
@@ -2309,7 +2337,9 @@ impl Render for CodeViewer {
                 MouseButton::Left,
                 cx.listener(|this, _, _, _| this.selection_dragging = false),
             )
-            .child(self.render_file_tree(colors, window, cx))
+            .when(self.show_file_tree, |viewer| {
+                viewer.child(self.render_file_tree(colors, window, cx))
+            })
             .child(self.render_toolbar(document, colors, cx))
             .child(div().min_h(px(0.0)).flex_1().overflow_hidden().child(body))
             .when_some(picker, |viewer, picker| viewer.child(picker))
@@ -2787,6 +2817,79 @@ const COMMON_KEYWORDS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn dirty_file_close_waits_for_discard_and_preserves_saving_documents(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let tokio_owner = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let handle = tokio_owner.handle().clone();
+        let (viewer, cx) = cx.add_window_view(move |_, cx| {
+            let mut viewer = CodeViewer::new(handle, false, 320.0, cx);
+            viewer.state = ViewerState::Ready(Box::new(document("original\n", None)));
+            viewer.set_file_tree_visible(false);
+            viewer
+        });
+        let close_events = std::rc::Rc::new(std::cell::Cell::new(0));
+        let recorded = std::rc::Rc::clone(&close_events);
+        let observed = viewer.clone();
+        viewer.update(cx, |_, cx| {
+            cx.subscribe(&observed, move |_, _, event, _| {
+                if matches!(event, CodeViewerEvent::CloseReady) {
+                    recorded.set(recorded.get() + 1);
+                }
+            })
+            .detach();
+        });
+        viewer.update(cx, |viewer, cx| {
+            assert!(viewer.request_close(cx));
+            let ViewerState::Ready(document) = &mut viewer.state else {
+                panic!("loaded file")
+            };
+            document.insert("edited ");
+            assert!(document.is_dirty());
+            assert!(!viewer.request_close(cx));
+            assert!(matches!(
+                viewer.pending_transition,
+                Some(PendingTransition::Close)
+            ));
+        });
+        assert_eq!(
+            close_events.get(),
+            0,
+            "a dirty close request must not release the editor"
+        );
+        viewer.update(cx, |viewer, cx| viewer.revert_document(cx));
+        assert_eq!(close_events.get(), 1);
+        viewer.read_with(cx, |viewer, _| {
+            let ViewerState::Ready(document) = &viewer.state else {
+                panic!("retained file")
+            };
+            assert_eq!(document.editor.text(), "original\n");
+            assert!(!document.is_dirty());
+            assert!(viewer.pending_transition.is_none());
+        });
+        viewer.update(cx, |viewer, cx| {
+            let ViewerState::Ready(document) = &mut viewer.state else {
+                panic!("loaded file")
+            };
+            document.save_status = SaveStatus::Saving;
+            assert!(!viewer.request_close(cx));
+            viewer.revert_document(cx);
+            assert!(matches!(
+                viewer.pending_transition,
+                Some(PendingTransition::Close)
+            ));
+        });
+        assert_eq!(
+            close_events.get(),
+            1,
+            "an in-flight save must finish before a close can proceed"
+        );
+    }
 
     fn document(text: &str, target: Option<SourceTarget>) -> SourceDocument {
         SourceDocument::new(SourceSnapshot {

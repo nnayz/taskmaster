@@ -22,6 +22,7 @@ use zeus_ui::{
     StatusGlyph, StatusState, Typo,
 };
 
+use crate::account_menu::AccountMenu;
 use crate::macos::sf_symbols::{SymbolWeight, sf_symbol, sf_symbol_weighted};
 use crate::navigation::query_label;
 use crate::query_editor::{self, ClipboardEdit, Edit};
@@ -36,13 +37,12 @@ use super::{
     move_to_end,
 };
 
-const SIDEBAR_TITLE_SIZE: f32 = 14.0;
-const SIDEBAR_SUBTITLE_SIZE: f32 = 12.0;
-const SIDEBAR_ROW_HEIGHT: f32 = 28.0;
-const SIDEBAR_NEW_AGENT_HEIGHT: f32 = 48.0;
-/// Width of one lineage column. The row's 6pt flex gap sits after it, yielding
-/// a comfortable 20pt visual step per generation without crushing titles.
-const TREE_COLUMN_WIDTH: f32 = 14.0;
+const SIDEBAR_TITLE_SIZE: f32 = Typo::ROW.size;
+const SIDEBAR_SUBTITLE_SIZE: f32 = Typo::META.size;
+const SIDEBAR_ROW_HEIGHT: f32 = Metrics::ROW_HEIGHT;
+const SIDEBAR_NEW_AGENT_HEIGHT: f32 = 32.0;
+/// Keep nested sessions readable while reserving room for their titles.
+const TREE_COLUMN_WIDTH: f32 = 12.0;
 
 #[derive(Clone, Debug)]
 pub enum SidebarEvent {
@@ -108,6 +108,8 @@ pub struct Sidebar {
     rename_focus: FocusHandle,
     hover_generation: u64,
     update: UpdateState,
+    /// Shared account control stays mounted independently of inspector state.
+    account_menu: Option<Entity<AccountMenu>>,
     /// When visibility last flipped, so a held ⌘B cannot outrun the slide.
     last_toggle: Option<Instant>,
     preview: bool,
@@ -185,6 +187,7 @@ impl Sidebar {
             rename_focus: cx.focus_handle(),
             hover_generation: 0,
             update: UpdateState::default(),
+            account_menu: None,
             last_toggle: None,
             preview,
             directory_picker_open: false,
@@ -208,6 +211,10 @@ impl Sidebar {
         self.ui.visible
     }
 
+    pub(crate) fn has_popover(&self) -> bool {
+        self.ui.popover.is_some()
+    }
+
     pub fn selected_session(&self) -> Option<SessionRecord> {
         self.store
             .read()
@@ -226,6 +233,11 @@ impl Sidebar {
 
     pub fn set_update(&mut self, state: UpdateState, cx: &mut Context<Self>) {
         self.update = state;
+        cx.notify();
+    }
+
+    pub(crate) fn set_account_menu(&mut self, menu: Entity<AccountMenu>, cx: &mut Context<Self>) {
+        self.account_menu = Some(menu);
         cx.notify();
     }
 
@@ -336,19 +348,26 @@ impl Sidebar {
         cx.notify();
     }
 
+    pub(crate) fn dismiss_workspace_popovers(&mut self, cx: &mut Context<Self>) {
+        self.commit_rename();
+        self.ui.popover = None;
+        self.ui.hover_card = None;
+        self.hover_generation = self.hover_generation.wrapping_add(1);
+        self.directory_picker_open = false;
+        cx.notify();
+    }
+
     fn activate_workspace(&mut self, id: ProjectId, cx: &mut Context<Self>) {
         let activated = self
             .store
             .write()
             .expect("session store lock poisoned")
-            .set_active_workspace(id);
+            .open_workspace_tab(id);
         if !activated {
             return;
         }
-        self.ui.popover = None;
-        self.ui.hover_card = None;
+        self.dismiss_workspace_popovers(cx);
         cx.emit(SidebarEvent::WorkspaceActivated);
-        cx.notify();
     }
 
     fn choose_workspace_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -728,32 +747,30 @@ impl Sidebar {
 
     fn new_agent_row(&self, colors: SemanticColors, cx: &mut Context<Self>) -> AnyElement {
         let hovering = self.ui.hovered_control == Some("new-agent");
-        let (agent, location) = {
+        let kind = {
             let store = self.store.read().expect("session store lock poisoned");
-            let agent = crate::agent_catalog::display_name(
-                &store.preferences().default_agent,
-                store.agent_catalog(),
-            );
-            let location = store
-                .default_spawn_host()
-                .map_or_else(|| "This Mac".to_owned(), |id| store.host_display_name(&id));
-            (agent, location)
+            ui_agent_kind(&store.preferences().default_agent)
         };
         div()
             .id("new-agent")
             .debug_selector(|| "SIDEBAR_NEW_AGENT".to_owned())
+            .focusable()
+            .tab_stop(true)
+            .role(Role::Button)
+            .aria_label("New Agent")
+            .aria_keyshortcuts("Meta+T")
             .mx(px(Space::INSET))
-            .mb(px(3.0))
+            .mb(px(4.0))
             .px(px(Space::ROW_H))
             .h(px(SIDEBAR_NEW_AGENT_HEIGHT))
             .flex()
             .items_center()
-            .gap(px(9.0))
+            .gap(px(8.0))
             .rounded(px(Radius::ROW))
             .bg(Fill::hover(colors, hovering))
             .cursor_pointer()
             .text_size(px(SIDEBAR_TITLE_SIZE))
-            .text_color(colors.text(zeus_ui::TextTone::Label))
+            .text_color(colors.primary)
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
                 this.ui.hovered_control = hovered.then_some("new-agent");
                 cx.notify();
@@ -762,32 +779,16 @@ impl Sidebar {
                 this.commit_rename();
                 this.open_new_agent_popover(None, cx);
             }))
+            .child(AgentLogo::new(kind, 16.0, colors).badged(false))
             .child(
                 div()
                     .debug_selector(|| "SIDEBAR_NEW_AGENT_COPY".to_owned())
                     .min_w(px(0.0))
                     .flex_1()
-                    .flex()
-                    .flex_col()
-                    .gap(px(1.0))
-                    .child(
-                        div()
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .line_height(px(18.0))
-                            .child("New Agent"),
-                    )
-                    .child(
-                        div()
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .text_size(px(SIDEBAR_SUBTITLE_SIZE))
-                            .line_height(px(16.0))
-                            .text_color(colors.tertiary)
-                            .child(format!("{agent} · {location}")),
-                    ),
+                    .whitespace_nowrap()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child("New Agent"),
             )
             .child(
                 div()
@@ -830,146 +831,6 @@ impl Sidebar {
                     cx.notify();
                 }),
             ))
-            .into_any_element()
-    }
-
-    fn workspace_row(
-        &self,
-        projection: &crate::store::SidebarProjection,
-        colors: SemanticColors,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let active = self
-            .store
-            .read()
-            .expect("session store lock poisoned")
-            .active_workspace_id()
-            .cloned();
-        let active_project = projection
-            .projects
-            .iter()
-            .find(|group| Some(&group.project.id) == active.as_ref())
-            .map(|group| &group.project);
-        let label = active_project
-            .map(|project| project.name.clone())
-            .unwrap_or_else(|| "Select workspace".into());
-        let selector_accessibility_label = format!("Active workspace: {label}");
-        let selector_hover = self.ui.hovered_control == Some("workspace-selector");
-        let add_hover = self.ui.hovered_control == Some("workspace-add");
-        let selector_open = matches!(self.ui.popover, Some(Popover::WorkspaceSelector));
-
-        div()
-            .id("workspace-control")
-            .debug_selector(|| "WORKSPACE_CONTROL".to_owned())
-            .mx(px(Space::INSET))
-            .mb(px(4.0))
-            .p(px(3.0))
-            .h(px(36.0))
-            .flex_none()
-            .flex()
-            .items_center()
-            .rounded(px(Radius::ROW))
-            .bg(colors.primary.alpha(0.035))
-            .child(
-                div()
-                    .id("workspace-selector")
-                    .debug_selector(|| "WORKSPACE_SELECTOR".to_owned())
-                    .focusable()
-                    .tab_stop(true)
-                    .role(Role::Button)
-                    .aria_label(selector_accessibility_label)
-                    .aria_description("Choose the workspace shown in the sidebar")
-                    .min_w(px(0.0))
-                    .flex_1()
-                    .h_full()
-                    .px(px(5.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.0))
-                    .rounded(px(Radius::CHIP))
-                    .bg(if selector_open {
-                        Fill::subtle(colors)
-                    } else {
-                        Fill::hover(colors, selector_hover)
-                    })
-                    .cursor_pointer()
-                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                        this.ui.hovered_control = hovered.then_some("workspace-selector");
-                        cx.notify();
-                    }))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.commit_rename();
-                        this.ui.popover =
-                            if matches!(this.ui.popover, Some(Popover::WorkspaceSelector)) {
-                                None
-                            } else {
-                                Some(Popover::WorkspaceSelector)
-                            };
-                        cx.notify();
-                    }))
-                    .child(project_badge(colors))
-                    .child(
-                        div()
-                            .min_w(px(0.0))
-                            .flex_1()
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .text_size(px(SIDEBAR_TITLE_SIZE))
-                            .font_weight(Typo::ROW_EMPHASIZED.weight)
-                            .text_color(colors.primary)
-                            .child(label),
-                    )
-                    .child(sf_symbol_weighted(
-                        if selector_open {
-                            "chevron.up"
-                        } else {
-                            "chevron.down"
-                        },
-                        8.0,
-                        SymbolWeight::Bold,
-                        colors.tertiary,
-                    )),
-            )
-            .child(
-                div()
-                    .mx(px(3.0))
-                    .h(px(18.0))
-                    .w(px(1.0))
-                    .flex_none()
-                    .bg(colors.primary.alpha(0.07)),
-            )
-            .child(
-                div()
-                    .id("workspace-add")
-                    .debug_selector(|| "WORKSPACE_ADD".to_owned())
-                    .focusable()
-                    .tab_stop(true)
-                    .role(Role::Button)
-                    .aria_label("Add Workspace")
-                    .aria_keyshortcuts("Meta+O")
-                    .size(px(28.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(Radius::CHIP))
-                    .bg(Fill::hover(colors, add_hover))
-                    .cursor_pointer()
-                    .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
-                        this.ui.hovered_control = hovered.then_some("workspace-add");
-                        cx.notify();
-                    }))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.show_add_workspace(window, cx);
-                    }))
-                    .child(sf_symbol_weighted(
-                        "plus",
-                        11.0,
-                        SymbolWeight::Medium,
-                        colors.secondary,
-                    )),
-            )
             .into_any_element()
     }
 
@@ -1122,11 +983,11 @@ impl Sidebar {
                     let id = id.clone();
                     move |this, _, _, cx| {
                         this.commit_rename();
-                        let _ = this
-                            .store
-                            .write()
-                            .expect("session store lock poisoned")
-                            .toggle_project_collapsed(id.clone());
+                        this.activate_workspace(id.clone(), cx);
+                        let mut store = this.store.write().expect("session store lock poisoned");
+                        if store.preferences().sidebar_collapsed_projects.contains(&id) {
+                            let _ = store.toggle_project_collapsed(id.clone());
+                        }
                         cx.notify();
                     }
                 }))
@@ -1188,7 +1049,6 @@ impl Sidebar {
                         .text_color(colors.primary.alpha(0.90))
                         .child(group.project.name.clone()),
                 )
-                .when(group.pinned, |row| row.child(pin_mark(colors)))
                 .when_some(project_host_label, |row, host| {
                     row.child(
                         div()
@@ -1207,10 +1067,39 @@ impl Sidebar {
                 })
                 .child(
                     div()
-                        .w(px(12.0))
+                        .id(format!("project-disclosure:{}", id.0))
+                        .focusable()
+                        .tab_stop(true)
+                        .role(Role::Button)
+                        .aria_label(format!(
+                            "{} {}",
+                            if collapsed { "Expand" } else { "Collapse" },
+                            group.project.name
+                        ))
+                        .w(px(20.0))
+                        .h(px(18.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(Radius::CHIP))
+                        .hover(move |button| button.bg(Fill::subtle(colors)))
                         .text_center()
                         .text_size(px(9.0))
                         .text_color(colors.secondary)
+                        .on_click(cx.listener({
+                            let id = id.clone();
+                            move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.commit_rename();
+                                let _ = this
+                                    .store
+                                    .write()
+                                    .expect("session store lock poisoned")
+                                    .toggle_project_collapsed(id.clone());
+                                cx.notify();
+                            }
+                        }))
                         .child(sf_symbol_weighted(
                             if collapsed {
                                 "chevron.right"
@@ -1330,14 +1219,6 @@ impl Sidebar {
         let title = display_title(session);
         let non_persistent =
             session.remote_persistence == Some(PersistenceCapability::NonPersistent);
-        let tree_badge = (row.has_children && (row.collapsed || hovered || selected)).then(|| {
-            if row.collapsed {
-                format!("+{}", row.descendant_count)
-            } else {
-                let agents = row.descendant_count + 1;
-                format!("{agents} agents")
-            }
-        });
         // Read before the title moves into the marquee below.
         let ended_chip = ended && title != ENDED_TITLE;
         let title_available_width = session_title_available_width(
@@ -1348,8 +1229,8 @@ impl Sidebar {
             ended_chip,
             host_label.as_deref(),
             hibernated,
-            row.pinned,
-            tree_badge.as_deref(),
+            false,
+            None,
             !hovered && selected && shortcut.is_some(),
         );
         let title_marquee_id = format!("session-title-marquee:{}", id.0);
@@ -1565,10 +1446,6 @@ impl Sidebar {
                 )
                 .font_weight(Typo::ROW.weight),
             )
-            .when_some(tree_badge, |element, label| {
-                element.child(branch_count_chip(label, session, colors))
-            })
-            .when(row.pinned, |element| element.child(pin_mark(colors)))
             // Chips, in descending order of how much they explain an otherwise
             // inert-looking row. Each is flex_none and the title absorbs the
             // remaining width, so a narrow sidebar truncates the title rather
@@ -2088,6 +1965,20 @@ impl Sidebar {
         )
     }
 
+    fn account_footer(&self) -> Option<AnyElement> {
+        self.account_menu.as_ref().map(|account| {
+            div()
+                .id("sidebar-account-footer")
+                .debug_selector(|| "SIDEBAR_ACCOUNT_FOOTER".to_owned())
+                .flex_none()
+                .px(px(8.0))
+                .pt(px(4.0))
+                .pb(px(4.0))
+                .child(account.clone())
+                .into_any_element()
+        })
+    }
+
     fn popover(
         &self,
         colors: SemanticColors,
@@ -2095,7 +1986,6 @@ impl Sidebar {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         match self.ui.popover.clone()? {
-            Popover::WorkspaceSelector => Some(self.workspace_selector_popover(colors, window, cx)),
             Popover::AddWorkspace {
                 root,
                 error,
@@ -2111,132 +2001,6 @@ impl Sidebar {
                 Some(self.session_actions_popover(id, position, colors, cx))
             }
         }
-    }
-
-    fn workspace_selector_popover(
-        &self,
-        colors: SemanticColors,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let (projection, active) = {
-            let mut store = self.store.write().expect("session store lock poisoned");
-            (
-                store.sidebar_projection(),
-                store.active_workspace_id().cloned(),
-            )
-        };
-        let mut rows = div()
-            .id("workspace-menu")
-            .debug_selector(|| "WORKSPACE_MENU".to_owned())
-            .role(Role::Menu)
-            .aria_label("Workspaces")
-            .max_h(px(280.0))
-            .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .p(px(4.0))
-            .gap(px(2.0));
-        if projection.projects.is_empty() {
-            rows = rows.child(
-                div()
-                    .px(px(10.0))
-                    .py(px(8.0))
-                    .text_size(px(Typo::META.size))
-                    .text_color(colors.tertiary)
-                    .child("No workspaces yet"),
-            );
-        }
-        for group in &projection.projects {
-            let id = group.project.id.clone();
-            let root = group.project.root.clone();
-            let selected = active.as_ref() == Some(&id);
-            let accessibility_label = format!("{} — {root}", group.project.name);
-            rows = rows.child(
-                div()
-                    .id(SharedString::from(format!("workspace-option-{}", id.0)))
-                    .debug_selector({
-                        let id = id.clone();
-                        move || format!("WORKSPACE_OPTION_{}", id.0)
-                    })
-                    .focusable()
-                    .tab_stop(true)
-                    .role(Role::MenuItem)
-                    .aria_label(accessibility_label)
-                    .px(px(6.0))
-                    .py(px(6.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(7.0))
-                    .rounded(px(Radius::ROW))
-                    .cursor_pointer()
-                    .when(selected, |row| row.bg(Fill::selected(colors, true)))
-                    .hover(move |row| row.bg(Fill::subtle(colors)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.activate_workspace(id.clone(), cx);
-                    }))
-                    .child(project_badge(colors))
-                    .child(
-                        div()
-                            .min_w(px(0.0))
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .gap(px(1.0))
-                            .child(
-                                div()
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .text_size(px(SIDEBAR_TITLE_SIZE))
-                                    .font_weight(Typo::ROW_EMPHASIZED.weight)
-                                    .text_color(colors.primary)
-                                    .child(group.project.name.clone()),
-                            )
-                            .child(
-                                div()
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .text_size(px(Typo::META.size))
-                                    .text_color(colors.tertiary)
-                                    .child(root),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .w(px(14.0))
-                            .flex_none()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(selected, |mark| {
-                                mark.child(sf_symbol_weighted(
-                                    "checkmark",
-                                    10.0,
-                                    SymbolWeight::Semibold,
-                                    colors.secondary,
-                                ))
-                            }),
-                    ),
-            );
-        }
-        let content = div()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .px(px(10.0))
-                    .pt(px(8.0))
-                    .pb(px(6.0))
-                    .text_size(px(Typo::SECTION_HEADER.size))
-                    .font_weight(Typo::SECTION_HEADER.weight)
-                    .text_color(colors.tertiary)
-                    .child("WORKSPACES"),
-            )
-            .child(HairlineDivider::horizontal(colors))
-            .child(rows);
-        self.popover_shell(74.0, content, colors, window, cx)
     }
 
     fn add_workspace_popover(
@@ -2454,9 +2218,8 @@ impl Sidebar {
         self.popover_shell(74.0, content, colors, window, cx)
     }
 
-    /// Panels that hang off the sidebar's own edge sit 12pt inside the window
-    /// edge the sidebar occupies -- the left one normally, the right one once
-    /// the sidebar is mirrored to the trailing side.
+    /// Sidebar panel offsets use window coordinates, 12pt inside whichever
+    /// window edge the sidebar occupies.
     fn popover_edge(&self, y: f32, bottom: bool, window: &Window) -> (Point<Pixels>, Anchor) {
         let mirrored = self
             .store
@@ -3750,7 +3513,7 @@ impl Sidebar {
         let id = {
             let mut store = self.store.write().expect("session store lock poisoned");
             let id = store
-                .active_workspace_sessions()
+                .ordered_sessions()
                 .get(index)
                 .map(|session| session.id.clone());
             if let Some(id) = &id {
@@ -3773,7 +3536,7 @@ impl Sidebar {
             .store
             .write()
             .expect("session store lock poisoned")
-            .active_workspace_sessions()
+            .ordered_sessions()
             .len();
         if count == 0 {
             return false;
@@ -3788,7 +3551,7 @@ impl Sidebar {
         self.commit_rename();
         {
             let mut store = self.store.write().expect("session store lock poisoned");
-            let sessions = store.active_workspace_sessions();
+            let sessions = store.ordered_sessions();
             if sessions.is_empty() {
                 return false;
             }
@@ -3815,7 +3578,7 @@ impl Sidebar {
         self.commit_rename();
         {
             let mut store = self.store.write().expect("session store lock poisoned");
-            let sessions = store.active_workspace_sessions();
+            let sessions = store.ordered_sessions();
             if sessions.is_empty() {
                 return false;
             }
@@ -3968,35 +3731,13 @@ impl Sidebar {
 impl Render for Sidebar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = self.colors();
-        let (projection, active_workspace) = {
-            let mut store = self.store.write().expect("session store lock poisoned");
-            (
-                store.sidebar_projection(),
-                store.active_workspace_id().cloned(),
-            )
-        };
-        let active_group = projection
-            .projects
-            .iter()
-            .find(|group| Some(&group.project.id) == active_workspace.as_ref());
-        self.shortcut_ranks.clear();
-        let selected_session = self
+        let projection = self
             .store
-            .read()
+            .write()
             .expect("session store lock poisoned")
-            .selected_session_id()
-            .cloned();
-        let ordered_sessions: Vec<_> = active_group
-            .into_iter()
-            .flat_map(|group| {
-                group.sessions.iter().map(|row| &row.session).chain(
-                    group
-                        .archived
-                        .iter()
-                        .filter(|session| selected_session.as_ref() == Some(&session.id)),
-                )
-            })
-            .collect();
+            .sidebar_projection();
+        self.shortcut_ranks.clear();
+        let ordered_sessions = &projection.ordered_sessions;
         let session_count = ordered_sessions.len();
         for (index, session) in ordered_sessions.iter().enumerate() {
             let shortcut = if index < 8 {
@@ -4010,12 +3751,7 @@ impl Render for Sidebar {
                 self.shortcut_ranks.insert(session.id.clone(), shortcut);
             }
         }
-        let display_order: Vec<_> = active_group
-            .into_iter()
-            .flat_map(|group| group.active.iter().chain(&group.archived))
-            .map(|session| session.id.clone())
-            .collect();
-        retain_live_glyphs(&mut self.glyphs, &display_order);
+        retain_live_glyphs(&mut self.glyphs, &projection.display_order);
         let mut list = div()
             .id("sidebar-list")
             .track_scroll(&self.list_scroll)
@@ -4028,7 +3764,7 @@ impl Render for Sidebar {
             .flex()
             .flex_col()
             .gap(px(3.0));
-        if let Some(group) = active_group {
+        for group in &projection.projects {
             list = list.child(self.project_section(group, colors, window, cx));
         }
 
@@ -4043,11 +3779,10 @@ impl Render for Sidebar {
             .track_focus(&self.rename_focus)
             .on_key_down(cx.listener(Self::on_key_down))
             .child(self.top_bar(colors, cx))
-            .child(self.workspace_row(&projection, colors, cx))
-            .when(active_group.is_some(), |root| {
+            .when(!projection.projects.is_empty(), |root| {
                 root.child(self.new_agent_row(colors, cx))
             });
-        if active_group.is_none() {
+        if projection.projects.is_empty() {
             root = root.child(self.empty_state(false, colors, cx));
         } else {
             // Rows dissolve into the chrome at both ends of the scroll instead
@@ -4064,6 +3799,7 @@ impl Render for Sidebar {
             );
         }
         root = root.children(self.update_footer(colors, cx));
+        root = root.children(self.account_footer());
         if let Some(popover) = self.popover(colors, window, cx) {
             root = root.child(popover);
         }
@@ -4156,43 +3892,6 @@ fn indent_rails(
             rail.into_any_element()
         })
         .collect()
-}
-
-fn pin_mark(colors: SemanticColors) -> AnyElement {
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .child(sf_symbol("pin.fill", 9.0, colors.tertiary))
-        .into_any_element()
-}
-
-/// Subtree size for coordinator rows. Expanded trees reveal the whole family
-/// count on focus/hover; folded trees retain a terse `+N` so hidden work never
-/// becomes invisible merely because the branch is compacted.
-fn branch_count_chip(
-    label: impl Into<SharedString>,
-    session: &SessionRecord,
-    colors: SemanticColors,
-) -> AnyElement {
-    let tint = Ink::working(ui_agent_kind(session.effective_kind()), colors);
-    div()
-        .flex_none()
-        .h(px(18.0))
-        .px(px(5.0))
-        .flex()
-        .items_center()
-        .gap(px(3.0))
-        .rounded(px(Radius::CHIP))
-        .bg(tint.alpha(0.075))
-        .border_1()
-        .border_color(tint.alpha(0.14))
-        .text_size(px(9.5))
-        .font_weight(Typo::META.weight)
-        .text_color(tint.alpha(0.90))
-        .child(sf_symbol("arrow.triangle.branch", 8.0, tint.alpha(0.85)))
-        .child(label.into())
-        .into_any_element()
 }
 
 /// The row's shared chip: one state, stated in the smallest space that still
@@ -4586,7 +4285,7 @@ fn session_title_available_width(
     available.max(36.0)
 }
 
-fn validate_workspace_root(root: &str) -> Result<String, String> {
+pub(crate) fn validate_workspace_root(root: &str) -> Result<String, String> {
     let root = root.trim();
     if root.is_empty() {
         return Err("Choose a folder to continue.".into());
@@ -4857,26 +4556,30 @@ mod tests {
     }
 
     #[gpui::test]
-    fn workspace_selector_switches_the_scoped_sidebar_project(cx: &mut TestAppContext) {
+    fn workspace_headers_activate_projects_without_hiding_other_workspaces(
+        cx: &mut TestAppContext,
+    ) {
         let (view, cx) = cx.add_window_view(|_, cx| {
             let sidebar = cx.new(|cx| Sidebar::new(None, true, PreviewScenario::Typical, cx));
             SidebarPopoverHarness { sidebar }
         });
 
-        assert!(cx.debug_bounds("WORKSPACE_SELECTOR").is_some());
+        assert!(cx.debug_bounds("WORKSPACE_SELECTOR").is_none());
+        assert!(cx.debug_bounds("WORKSPACE_ADD").is_none());
+        for selector in [
+            "PROJECT_preview-zeus",
+            "PROJECT_preview-mldrills",
+            "PROJECT_preview-pharos-labs",
+            "PROJECT_preview-settings-kit",
+        ] {
+            assert!(cx.debug_bounds(selector).is_some());
+        }
+        let project = cx
+            .debug_bounds("PROJECT_preview-mldrills")
+            .expect("workspace header");
+        cx.simulate_click(project.center(), Modifiers::default());
+
         assert!(cx.debug_bounds("PROJECT_preview-zeus").is_some());
-        assert!(cx.debug_bounds("PROJECT_preview-mldrills").is_none());
-
-        let selector = cx
-            .debug_bounds("WORKSPACE_SELECTOR")
-            .expect("workspace selector");
-        cx.simulate_click(selector.center(), Modifiers::default());
-        let option = cx
-            .debug_bounds("WORKSPACE_OPTION_preview-mldrills")
-            .expect("workspace option");
-        cx.simulate_click(option.center(), Modifiers::default());
-
-        assert!(cx.debug_bounds("PROJECT_preview-zeus").is_none());
         assert!(cx.debug_bounds("PROJECT_preview-mldrills").is_some());
         let sidebar = view.read_with(cx, |harness, _| harness.sidebar.clone());
         assert_eq!(
@@ -4891,13 +4594,119 @@ mod tests {
     }
 
     #[gpui::test]
-    fn add_workspace_control_opens_an_explicit_cancelable_dialog(cx: &mut TestAppContext) {
-        let (view, cx) = cx.add_window_view(|_, cx| {
+    fn sidebar_workspace_list_follows_new_agent_without_a_switcher(cx: &mut TestAppContext) {
+        struct WorkspaceSidebarHarness {
+            sidebar: Entity<Sidebar>,
+        }
+
+        impl Render for WorkspaceSidebarHarness {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                div().size_full().flex().flex_col().child(
+                    div()
+                        .flex_1()
+                        .min_h(px(0.0))
+                        .w(px(220.0))
+                        .child(self.sidebar.clone()),
+                )
+            }
+        }
+
+        let (_harness, cx) = cx.add_window_view(|_, cx| {
             let sidebar = cx.new(|cx| Sidebar::new(None, true, PreviewScenario::Typical, cx));
+            WorkspaceSidebarHarness { sidebar }
+        });
+        let new_agent = cx
+            .debug_bounds("SIDEBAR_NEW_AGENT")
+            .expect("new agent action");
+        let workspace = cx
+            .debug_bounds("PROJECT_preview-zeus")
+            .expect("workspace list");
+        assert!(workspace.top() >= new_agent.bottom());
+        assert!(cx.debug_bounds("PROJECT_preview-mldrills").is_some());
+        assert!(cx.debug_bounds("WORKSPACE_CONTROL").is_none());
+        assert!(cx.debug_bounds("WORKSPACE_MENU").is_none());
+    }
+
+    #[gpui::test]
+    fn account_footer_opens_above_an_empty_mirrored_sidebar_with_hidden_inspector(
+        cx: &mut TestAppContext,
+    ) {
+        struct FooterHarness {
+            sidebar: Entity<Sidebar>,
+            account: Entity<AccountMenu>,
+        }
+
+        impl Render for FooterHarness {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut Context<Self>,
+            ) -> impl IntoElement {
+                div().size_full().flex().justify_end().child(
+                    div()
+                        .debug_selector(|| "ACCOUNT_TEST_SIDEBAR_COLUMN".to_owned())
+                        .h_full()
+                        .w(px(184.0))
+                        .child(self.sidebar.clone()),
+                )
+            }
+        }
+
+        let (harness, cx) = cx.add_window_view(|_, cx| {
+            let mut fixture = SidebarPreviewFixture::make(PreviewScenario::Empty);
+            fixture.prefs.sidebar_width = 184.0;
+            fixture.prefs.sidebar_on_right = true;
+            fixture.prefs.inspector_open = false;
+            let runtime = Arc::new(StoreRuntime::preview_from(fixture.into_store()));
+            let account = cx.new(|cx| AccountMenu::new(Arc::clone(&runtime), true, cx));
+            let sidebar = cx.new(|cx| {
+                let mut sidebar = Sidebar::new(Some(runtime), true, PreviewScenario::Empty, cx);
+                sidebar.set_account_menu(account.clone(), cx);
+                sidebar
+            });
+            FooterHarness { sidebar, account }
+        });
+
+        let column = cx
+            .debug_bounds("ACCOUNT_TEST_SIDEBAR_COLUMN")
+            .expect("mirrored sidebar column");
+        let footer = cx
+            .debug_bounds("SIDEBAR_ACCOUNT_FOOTER")
+            .expect("account footer in empty sidebar");
+        let control = cx
+            .debug_bounds("SIDEBAR_ACCOUNT_CONTROL")
+            .expect("account control independent of inspector");
+        assert_eq!(footer.bottom(), column.bottom());
+        assert!(control.left() >= column.left());
+        assert!(control.right() <= column.right());
+        assert!(control.top() > column.center().y);
+        assert!(cx.debug_bounds("INSPECTOR_ACCOUNT_AVATAR").is_none());
+        cx.simulate_click(control.center(), Modifiers::default());
+
+        let menu = cx.debug_bounds("ACCOUNT_MENU").expect("account menu");
+        assert!(menu.bottom() <= control.top());
+        assert!(menu.right() <= column.right());
+        assert!(menu.right() >= column.right() - px(16.0));
+        assert!(cx.debug_bounds("ACCOUNT_OPEN_SETTINGS").is_some());
+        let account = harness.read_with(cx, |harness, _| harness.account.clone());
+        account.update(cx, |account, cx| account.dismiss(cx));
+        assert!(cx.debug_bounds("ACCOUNT_MENU").is_none());
+    }
+
+    #[gpui::test]
+    fn empty_sidebar_add_workspace_opens_an_explicit_cancelable_dialog(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let sidebar = cx.new(|cx| Sidebar::new(None, true, PreviewScenario::Empty, cx));
             SidebarPopoverHarness { sidebar }
         });
 
-        let add = cx.debug_bounds("WORKSPACE_ADD").expect("add workspace");
+        let add = cx
+            .debug_bounds("EMPTY_ADD_WORKSPACE")
+            .expect("add workspace");
         cx.simulate_click(add.center(), Modifiers::default());
 
         assert!(cx.debug_bounds("ADD_WORKSPACE_DIALOG").is_some());
@@ -4923,8 +4732,8 @@ mod tests {
             SidebarPopoverHarness { sidebar }
         });
 
-        assert!(cx.debug_bounds("WORKSPACE_SELECTOR").is_some());
-        assert!(cx.debug_bounds("WORKSPACE_ADD").is_some());
+        assert!(cx.debug_bounds("WORKSPACE_SELECTOR").is_none());
+        assert!(cx.debug_bounds("WORKSPACE_ADD").is_none());
         assert!(cx.debug_bounds("EMPTY_ADD_WORKSPACE").is_some());
         assert!(cx.debug_bounds("EMPTY_NEW_AGENT").is_none());
     }

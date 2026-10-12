@@ -192,7 +192,7 @@ impl LauncherOverlay {
         self.toggle_picker(Picker::Recipe);
     }
 
-    fn close(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close(&mut self, cx: &mut Context<Self>) {
         if !self.open {
             return;
         }

@@ -178,6 +178,8 @@ cat > "${contents}/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSAppTransportSecurity</key>
+    <dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>
     <key>NSScreenCaptureUsageDescription</key><string>Zeus captures a window when a hosted coding agent asks to see the local interface.</string>
 </dict>
 </plist>
