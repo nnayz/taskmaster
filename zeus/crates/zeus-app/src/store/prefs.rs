@@ -1,7 +1,9 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::panel_tabs::PanelTabs;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeus_proto::{AgentKind, ProjectId, SessionId};
 
@@ -49,10 +51,8 @@ pub enum InspectorTab {
     Artifacts,
 }
 
-/// How the current spawn family is shown in the terminal pane.
-///
-/// `Tabs` is a compact switcher above the terminal. `Tree` replaces the
-/// terminal with the full agentic workflow genealogy.
+/// Retained for reading existing preference files. Family navigation now lives
+/// in the sidebar; neither value changes the terminal's presentation.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LineageView {
@@ -132,9 +132,9 @@ pub struct Prefs {
     pub inspector_width: f32,
     /// Last selected tab in the trailing workbench inspector.
     pub inspector_tab: InspectorTab,
-    /// Shared soft-wrap preference for the inspector's Review and Code tabs.
+    /// Shared soft-wrap preference for Review and file editors.
     pub inspector_word_wrap: bool,
-    /// Tabs switcher vs dedicated workflow tree for a spawn family.
+    /// Legacy family view preference, retained for saved-preference compatibility.
     pub lineage_view: LineageView,
     /// Fraction of the terminal workbench reserved for the primary pane when
     /// the lower terminal is open.
@@ -153,6 +153,16 @@ pub struct Prefs {
     /// This is independent of session selection so an empty workspace can be
     /// restored across launches.
     pub last_active_workspace: Option<ProjectId>,
+    /// Open desktop workspaces, in tab order. `None` migrates preferences from
+    /// before workspace tabs; an explicit empty list remembers closing all tabs.
+    pub workspace_tabs: Option<Vec<ProjectId>>,
+    /// Last selected session per workspace, including workspaces whose tab is
+    /// currently closed. Session identity remains owned by the Engine.
+    pub workspace_sessions: HashMap<ProjectId, SessionId>,
+    /// Inspector selection restored when returning to a workspace.
+    pub workspace_inspector_tabs: HashMap<ProjectId, InspectorTab>,
+    /// Open panel tabs and active selection for each workspace.
+    pub(crate) workspace_panel_tabs: HashMap<ProjectId, PanelTabs>,
     /// Session that should regain focus after the daemon's initial hydrate.
     pub last_selected_session: Option<SessionId>,
     /// Schema version for [`Self::launch_recipes`]. Missing values deserialize
@@ -200,6 +210,10 @@ impl Default for Prefs {
             sidebar_collapsed_sessions: Vec::new(),
             sidebar_expanded_archives: Vec::new(),
             last_active_workspace: None,
+            workspace_tabs: None,
+            workspace_sessions: HashMap::new(),
+            workspace_inspector_tabs: HashMap::new(),
+            workspace_panel_tabs: HashMap::new(),
             last_selected_session: None,
             launch_recipes_version: CURRENT_RECIPES_VERSION,
             launch_recipes: Vec::new(),
@@ -308,6 +322,13 @@ impl Prefs {
             self.terminal_theme = DEFAULT_THEME.to_owned();
         }
         self.launch_recipes.retain(LaunchRecipe::is_well_formed);
+        if let Some(tabs) = &mut self.workspace_tabs {
+            let mut seen = HashSet::new();
+            tabs.retain(|id| seen.insert(id.clone()));
+        }
+        for tabs in self.workspace_panel_tabs.values_mut() {
+            tabs.normalize();
+        }
         if self.launch_recipes_version < CURRENT_RECIPES_VERSION {
             self.launch_recipes_version = CURRENT_RECIPES_VERSION;
         }
@@ -368,9 +389,113 @@ mod tests {
             serde_json::from_str(r#"{"lastSelectedSession":"session-a"}"#).expect("legacy prefs");
 
         assert_eq!(restored.last_active_workspace, None);
+        assert_eq!(restored.workspace_tabs, None);
+        assert!(restored.workspace_sessions.is_empty());
+        assert!(restored.workspace_inspector_tabs.is_empty());
+        assert!(restored.workspace_panel_tabs.is_empty());
         assert_eq!(
             restored.last_selected_session,
             Some(zeus_proto::SessionId::new("session-a"))
+        );
+    }
+
+    #[test]
+    fn explicit_empty_workspace_tabs_survive_preferences_round_trip() {
+        let restored: Prefs =
+            serde_json::from_str(r#"{"workspaceTabs":[]}"#).expect("empty workspace tabs");
+        assert_eq!(restored.workspace_tabs, Some(Vec::new()));
+        let encoded = serde_json::to_value(restored).expect("encode tabs");
+        assert_eq!(encoded["workspaceTabs"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn workspace_tab_normalization_keeps_the_first_occurrence_order() {
+        let mut prefs = Prefs {
+            workspace_tabs: Some(vec![
+                zeus_proto::ProjectId::new("b"),
+                zeus_proto::ProjectId::new("a"),
+                zeus_proto::ProjectId::new("b"),
+            ]),
+            ..Prefs::default()
+        };
+        prefs.normalize();
+        assert_eq!(
+            prefs.workspace_tabs,
+            Some(vec![
+                zeus_proto::ProjectId::new("b"),
+                zeus_proto::ProjectId::new("a"),
+            ])
+        );
+    }
+
+    #[test]
+    fn workspace_panel_tabs_keep_empty_layouts_and_terminal_identity() {
+        use crate::panel_tabs::{PanelTabKind, PanelTabs};
+        use zeus_proto::{ProjectId, SessionId};
+
+        let empty_project = ProjectId::new("closed-panel");
+        let terminal_project = ProjectId::new("terminal-panel");
+        let mut tabs = PanelTabs::new(PanelTabKind::Review);
+        let first = tabs.open(PanelTabKind::Terminal).unwrap();
+        let second = tabs.open(PanelTabKind::Terminal).unwrap();
+        tabs.tabs
+            .iter_mut()
+            .find(|tab| tab.id == first)
+            .unwrap()
+            .session_id = Some(SessionId::new("first-shell"));
+        tabs.tabs
+            .iter_mut()
+            .find(|tab| tab.id == second)
+            .unwrap()
+            .session_id = Some(SessionId::new("second-shell"));
+        let mut prefs = Prefs::default();
+        prefs
+            .workspace_panel_tabs
+            .insert(empty_project.clone(), PanelTabs::empty());
+        prefs
+            .workspace_panel_tabs
+            .insert(terminal_project.clone(), tabs.clone());
+        let mut restored: Prefs =
+            serde_json::from_value(serde_json::to_value(prefs).unwrap()).unwrap();
+        restored.normalize();
+
+        assert!(
+            restored.workspace_panel_tabs[&empty_project]
+                .tabs
+                .is_empty()
+        );
+        assert_eq!(restored.workspace_panel_tabs[&empty_project].active, None);
+        assert_eq!(restored.workspace_panel_tabs[&terminal_project], tabs);
+        let mut reopened = restored.workspace_panel_tabs[&terminal_project].clone();
+        reopened.close(second);
+        assert!(reopened.open(PanelTabKind::Terminal).unwrap() > second);
+    }
+
+    #[test]
+    fn future_panel_kinds_do_not_invalidate_other_preferences() {
+        let restored: Prefs = serde_json::from_value(serde_json::json!({
+            "sidebarWidth": 276.0,
+            "workspacePanelTabs": {
+                "project-a": {
+                    "tabs": [
+                        { "id": 1, "kind": "details" },
+                        { "id": 9, "kind": "futurePanel" }
+                    ],
+                    "active": 9
+                },
+                "project-b": { "tabs": [], "active": null }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(restored.sidebar_width, 276.0);
+        let tabs = &restored.workspace_panel_tabs[&zeus_proto::ProjectId::new("project-a")];
+        assert_eq!(tabs.tabs.len(), 1);
+        assert_eq!(tabs.active, Some(1));
+        assert!(
+            restored.workspace_panel_tabs[&zeus_proto::ProjectId::new("project-b")]
+                .tabs
+                .is_empty()
         );
     }
 

@@ -932,6 +932,14 @@ impl UtilitySurfaces {
         self.surface != Surface::None
     }
 
+    pub(crate) fn dismiss_for_workspace_navigation(&mut self, cx: &mut Context<Self>) {
+        self.worktrees.cancel_cleanup();
+        self.surface = Surface::None;
+        self.settings_menu = None;
+        self.host_editor = None;
+        cx.notify();
+    }
+
     pub(crate) fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.prefs = self
             .store

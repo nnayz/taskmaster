@@ -285,7 +285,7 @@ impl NavigationOverlay {
         cx.notify();
     }
 
-    fn close_overlay(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_overlay(&mut self, cx: &mut Context<Self>) {
         self.overlay = None;
         self.query.clear();
         self.highlight = 0;
@@ -859,13 +859,6 @@ impl NavigationOverlay {
             }
             PaletteCommand::OpenSessionOverview => {
                 cx.emit(NavigationEvent::OpenOverview);
-                self.close_overlay(cx);
-            }
-            PaletteCommand::ShowAgentWorkflow => {
-                self.store
-                    .write()
-                    .expect("session store lock poisoned")
-                    .set_lineage_view(crate::store::LineageView::Tree);
                 self.close_overlay(cx);
             }
             PaletteCommand::OpenWorktrees => {

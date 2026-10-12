@@ -24,7 +24,6 @@ pub enum DragItem {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Popover {
-    WorkspaceSelector,
     AddWorkspace {
         root: Option<String>,
         error: Option<String>,
