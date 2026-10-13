@@ -10,7 +10,7 @@ One session you talk to. It does not edit much. It hires.
 1. `⌘T` a Claude or Codex in the repo, titled `lead`.
 2. Tell it the outcome, the constraints, and that it must spawn specialists
    into worktrees rather than touching `main`.
-3. Open **Tree**. You should see the lead above a row of marks.
+3. Expand the lead in the sidebar to see its spawned sessions.
 4. Drink coffee. `⌘⇧J` only when something is red.
 
 A useful split:
@@ -33,7 +33,7 @@ Leave a summary at the top of the diff." When they go idle, sit in session
 overview (`⌘⇧O`) and open Review on each. Keep one tree, delete the other
 two after you have stolen the good ideas.
 
-The tree view is the scoreboard. Ended spikes stay on the board until you
+The sidebar is the scoreboard. Ended spikes stay visible until you
 archive them (`⌘⇧W`).
 
 ## Local glass, remote muscle
@@ -48,7 +48,7 @@ babysit.
 A session that is already on Forge can spawn children there (same host,
 same MCP). A lead that is still on the laptop cannot MCP-hire onto Forge
 yet. Start the remote workers from the palette or
-`zeus session spawn --host forge`, then talk to them from the tree.
+`zeus session spawn --host forge`, then select them in the sidebar.
 
 If you enrolled a `zeus-node`, use handoff to move a Codex or Claude
 thread to the VPS without copying `auth.json`. See

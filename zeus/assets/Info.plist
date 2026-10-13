@@ -14,6 +14,11 @@
     <string>Zeus captures a window when a hosted coding agent asks to see the local interface.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoadsInWebContent</key>
+        <true/>
+    </dict>
     <key>NSUserNotificationAlertStyle</key>
     <string>alert</string>
     <key>NSUserNotificationUsageDescription</key>

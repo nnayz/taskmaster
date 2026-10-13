@@ -59,10 +59,10 @@ pub struct Typo;
 impl Typo {
     pub const META: TypeStyle = TypeStyle::new(11.0, FontWeight::MEDIUM, false);
     pub const SECTION_HEADER: TypeStyle = TypeStyle::new(11.0, FontWeight::SEMIBOLD, false);
-    pub const ROW: TypeStyle = TypeStyle::new(13.0, FontWeight::NORMAL, false);
-    pub const ROW_EMPHASIZED: TypeStyle = TypeStyle::new(13.0, FontWeight::MEDIUM, false);
-    pub const TITLE: TypeStyle = TypeStyle::new(13.0, FontWeight::SEMIBOLD, false);
-    pub const DISPLAY_TITLE: TypeStyle = TypeStyle::new(15.0, FontWeight::SEMIBOLD, false);
+    pub const ROW: TypeStyle = TypeStyle::new(12.0, FontWeight::NORMAL, false);
+    pub const ROW_EMPHASIZED: TypeStyle = TypeStyle::new(12.0, FontWeight::MEDIUM, false);
+    pub const TITLE: TypeStyle = TypeStyle::new(12.0, FontWeight::MEDIUM, false);
+    pub const DISPLAY_TITLE: TypeStyle = TypeStyle::new(14.0, FontWeight::MEDIUM, false);
     pub const META_MONO: TypeStyle = TypeStyle::new(11.0, FontWeight::MEDIUM, true);
 
     pub const ALL: [(TextRole, TypeStyle); 7] = [
@@ -301,28 +301,26 @@ pub struct Space;
 
 impl Space {
     pub const INDENT: f32 = 10.0;
-    pub const ROW_H: f32 = 6.0;
+    pub const ROW_H: f32 = 4.0;
     pub const INSET: f32 = 8.0;
 }
 
 pub struct Metrics;
 
 impl Metrics {
-    pub const TITLE_BAR: f32 = 38.0;
-    /// Compact agent-family navigator below the terminal toolbar.
-    pub const LINEAGE_STRIP: f32 = 38.0;
-    pub const TOOLBAR_EDGE_INSET: f32 = 10.0;
+    pub const TITLE_BAR: f32 = 34.0;
+    pub const TOOLBAR_EDGE_INSET: f32 = 8.0;
     /// Window-space x coordinate after the macOS close/minimize/zoom cluster.
     ///
     /// Zeus places the close control at x=20. AppKit's 14pt controls and 6pt
     /// spacing put the zoom control's trailing edge at x=74; the remaining
     /// 8pt keeps labels from looking attached to (or painting under) it.
     pub const TOOLBAR_TRAFFIC_LIGHT_SAFE_RIGHT: f32 = 82.0;
-    pub const TOOLBAR_ITEM_GAP: f32 = 6.0;
-    pub const TOOLBAR_COMPACT_GAP: f32 = 3.0;
-    pub const TOOLBAR_CONTROL_SIZE: f32 = 26.0;
-    pub const TOOLBAR_CHIP_HEIGHT: f32 = 24.0;
-    pub const ROW_HEIGHT: f32 = 25.0;
+    pub const TOOLBAR_ITEM_GAP: f32 = 4.0;
+    pub const TOOLBAR_COMPACT_GAP: f32 = 4.0;
+    pub const TOOLBAR_CONTROL_SIZE: f32 = 24.0;
+    pub const TOOLBAR_CHIP_HEIGHT: f32 = 22.0;
+    pub const ROW_HEIGHT: f32 = 24.0;
     /// Rows inside menus, dropdowns, and popovers. Deliberately tighter than
     /// ROW_HEIGHT: a menu is scanned and dismissed, not lived in.
     pub const MENU_ROW_HEIGHT: f32 = 22.0;

@@ -29,9 +29,10 @@ and notarized release ships. See [Updates](updates.md).
 3. Work in the embedded terminal. The sidebar row tells you whether that agent
    is working, waiting for you, or done. You do not have to keep reading the
    PTY.
-4. Press `⌘⇧D` if the inspector is closed. **Info** is identity and usage.
-   **Review** is the git diff for this worktree. **Code** opens a file.
-   **Artifacts** collects ports, PRs, and other finds.
+4. Press `⌘⇧D` if the panel is closed. Use **+** to open tabs.
+   **Details** combines session info and artifacts. **Review** shows the git
+   diff, **Files** opens named file tabs, and **Terminal** and **Browser**
+   provide additional tools inside the panel.
 5. Quit Zeus (`⌘Q`) and reopen it. The background Engine still owns the PTY.
    The session and its scrollback are still there.
 
@@ -43,12 +44,13 @@ are on `PATH`.
 ## What you are looking at
 
 ```text
-┌ sidebar ┐  ┌ toolbar + tabs or tree ┐  ┌ inspector ┐
-│ project │  │                        │  │ Info      │
-│ session │  │     live terminal      │  │ Review    │
-│ session │  │                        │  │ Code      │
-│ + New   │  │     optional shell     │  │ Artifacts │
-└─────────┘  └────────────────────────┘  └───────────┘
+┌ sidebar ┐  ┌ terminal toolbar ──────┐  ┌ panel tabs + ┐
+│ project │  │                        │  │ Details      │
+│ session │  │     live terminal      │  │ Review       │
+│ session │  │                        │  │ Files        │
+│ + New   │  │     optional shell     │  │ Terminal     │
+│ account │  │                        │  │ Browser      │
+└─────────┘  └────────────────────────┘  └─────────────┘
 ```
 
 The sidebar is the map of the fleet. The center is the session you are in.
@@ -66,7 +68,7 @@ See [Worktrees](worktrees.md).
 **Let a lead spawn, do not type every child yourself.** A hosted Claude,
 Codex, Grok, or OpenCode session already has Zeus MCP. Ask it to open a
 reviewer, a tester, or a second implementer. Children nest under the lead
-in the sidebar and in the workflow tree. See [Orchestration](orchestration.md).
+in the sidebar. See [Orchestration](orchestration.md).
 
 **Jump to whoever needs you.** `⌘⇧J` selects the next session that is blocked
 on input. `⌘⇧O` opens the session overview. Treat the rest of the fleet as
