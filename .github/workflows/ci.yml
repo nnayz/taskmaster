@@ -231,6 +231,9 @@ jobs:
         run: |
           app="${RUNNER_TEMP}/zeus-dist/zeus.app"
           plutil -lint "${app}/Contents/Info.plist"
+          test -s "${app}/Contents/Resources/Assets.car"
+          test "$(plutil -extract CFBundleIconName raw "${app}/Contents/Info.plist")" = ZeusIcon
+          test "$(plutil -extract CFBundleIconFile raw "${app}/Contents/Info.plist")" = icon.icns
           test -x "${app}/Contents/Resources/bin/zeus"
           test -x "${app}/Contents/Resources/bin/zeus-mcp"
           test -x "${app}/Contents/Resources/bin/zeusd-rs"

@@ -106,7 +106,7 @@ if [[ ! -f "${bundled_icon}" ]] || ! cmp -s "${source_icon}" "${bundled_icon}"; 
     echo "error: packaged app icon is missing or does not match ${source_icon}" >&2
     exit 1
 fi
-echo "==> Verified packaged lightning icon"
+"${script_dir}/install-icon.sh" release "${app_path}"
 
 app_bin_dir="${app_path}/Contents/Resources/bin"
 echo "==> Bundling CLI and lightweight MCP proxy into Resources/bin"
