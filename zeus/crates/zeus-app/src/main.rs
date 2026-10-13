@@ -1,5 +1,7 @@
+mod account_menu;
 mod agent_catalog;
 mod app_theme;
+mod browser_panel;
 mod code_intelligence;
 mod code_viewer;
 mod composer;
@@ -20,6 +22,9 @@ mod markdown_view;
 pub mod navigation;
 pub mod notifications;
 pub mod palette;
+mod panel_header;
+mod panel_tabs;
+mod panel_terminal;
 mod preview_terminal;
 pub mod query_editor;
 pub mod quick_open;
@@ -36,6 +41,8 @@ pub mod terminal_pane;
 pub mod updates;
 pub mod usage;
 mod workbench;
+mod workspace_chooser;
+mod workspace_colors;
 pub mod worktrees;
 
 #[cfg(target_os = "macos")]
@@ -110,7 +117,7 @@ fn install_app_menus(cx: &mut App) {
             MenuItem::action("Quit zeus", Quit),
         ]),
         Menu::new("File").items([
-            MenuItem::action("Add Workspace…", root::OpenWorkspace),
+            MenuItem::action("Open Workspace…", root::OpenWorkspace),
             MenuItem::separator(),
             MenuItem::action("New Agent", root::OpenNewAgent),
         ]),
@@ -409,9 +416,12 @@ fn open_main_window(
             titlebar: Some(TitlebarOptions {
                 title,
                 appears_transparent: true,
-                // GPUI uses top/left insets here: AppKit's native 8 pt origin plus the
-                // spec's +12 x / -6 frame-origin nudge maps to 20 pt left and 14 pt top.
-                traffic_light_position: Some(point(px(20.0), px(14.0))),
+                // Center AppKit's 14pt controls in the compact toolbar while
+                // keeping the existing leading inset and safe label lane.
+                traffic_light_position: Some(point(
+                    px(20.0),
+                    px((zeus_ui::Metrics::TITLE_BAR - 14.0) / 2.0),
+                )),
             }),
             ..Default::default()
         },

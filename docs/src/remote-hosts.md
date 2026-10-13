@@ -73,7 +73,7 @@ They do not get parsed out of the protocol stream.
   [Orchestration](orchestration.md).
 - **Move Session to …** in the palette migrates the selected Claude session
   across hosts (v1 is Claude-only, because resume has to be trustworthy).
-- Status, hibernate, Review, and the workflow tree work the same as local.
+- Status, hibernate, Review, and sidebar session grouping work the same as local.
 
 If the Helper cannot be verified, Zeus fails closed with a structured
 error. It will not fall back to `tmux`.

@@ -10,8 +10,11 @@ sidecar/node_modules/
 # Rust build output
 zeus/target/
 
-# Agent worktrees created by Claude Code (EnterWorktree) — never committed.
-.claude/worktrees/
+# Local agent skills and tool-specific links — never committed.
+.agents/
+.claude/
+.cursor/
+.grok/
 
 .serena
 .tokensave
@@ -23,3 +26,13 @@ docs/book/
 site/node_modules/
 site/.svelte-kit/
 site/build/
+
+# Companion development and test artifacts
+.companion-dev/
+.zeus-companion-dev/
+.zeus-test/
+*.pem
+pair*.json
+
+# Xcode workspace data
+*.xcworkspace/

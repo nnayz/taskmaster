@@ -288,6 +288,7 @@ pub struct SessionStore {
     project_add_error: Option<String>,
     prefs: Prefs,
     terminal_residency: TerminalResidency,
+    pending_panel_launches: usize,
     app_is_active: bool,
     last_action_error: Option<String>,
     sidebar_selection_anchor: Option<SessionId>,
@@ -353,6 +354,7 @@ impl SessionStore {
                 project_add_error: None,
                 prefs,
                 terminal_residency: TerminalResidency::default(),
+                pending_panel_launches: 0,
                 app_is_active: true,
                 last_action_error: None,
                 sidebar_selection_anchor: None,
@@ -628,17 +630,108 @@ impl SessionStore {
 
     pub fn active_workspace_id(&self) -> Option<&ProjectId> {
         self.prefs.last_active_workspace.as_ref().filter(|id| {
-            self.projects.contains_key(*id)
-                || self
-                    .sessions
-                    .values()
-                    .any(|session| &session.project_id == *id)
+            self.workspace_exists(id)
+                && self
+                    .prefs
+                    .workspace_tabs
+                    .as_ref()
+                    .is_none_or(|tabs| tabs.contains(id))
         })
     }
 
     pub fn active_workspace(&self) -> Option<&Project> {
         self.active_workspace_id()
             .and_then(|id| self.projects.get(id))
+    }
+
+    /// Open tabs are independent of the project catalog and session lifecycle.
+    /// Session-only projects use the same synthesized metadata as the sidebar.
+    pub fn workspace_tabs(&self) -> Vec<Project> {
+        let Some(tabs) = &self.prefs.workspace_tabs else {
+            return Vec::new();
+        };
+        let synthesized = tabs
+            .iter()
+            .any(|id| !self.projects.contains_key(id))
+            .then(|| {
+                projection::build_projection(
+                    &self.sessions,
+                    &self.projects,
+                    &self.prefs,
+                    self.selected_session_id.as_ref(),
+                    &self.closing,
+                )
+                .projects
+                .into_iter()
+                .map(|group| (group.project.id.clone(), group.project))
+                .collect::<HashMap<_, _>>()
+            });
+        tabs.iter()
+            .filter_map(|id| {
+                self.projects
+                    .get(id)
+                    .or_else(|| synthesized.as_ref().and_then(|projects| projects.get(id)))
+                    .cloned()
+            })
+            .collect()
+    }
+
+    /// Opening an existing tab focuses it without changing its position.
+    pub fn open_workspace_tab(&mut self, id: ProjectId) -> bool {
+        self.set_active_workspace(id)
+    }
+
+    /// Closing a tab only changes desktop navigation. All projects and Agent
+    /// processes remain available in the workspace chooser.
+    pub fn close_workspace_tab(&mut self, id: &ProjectId) -> bool {
+        let Some(position) = self
+            .prefs
+            .workspace_tabs
+            .as_ref()
+            .and_then(|tabs| tabs.iter().position(|candidate| candidate == id))
+        else {
+            return false;
+        };
+        let active = self.prefs.last_active_workspace.as_ref() == Some(id);
+        if active {
+            self.remember_workspace_context();
+        }
+        let tabs = self.prefs.workspace_tabs.as_mut().expect("open tab list");
+        tabs.remove(position);
+        let next = active
+            .then(|| {
+                tabs.get(position.min(tabs.len().saturating_sub(1)))
+                    .cloned()
+            })
+            .flatten();
+        if let Some(next) = next {
+            self.set_active_workspace(next);
+        } else if active {
+            self.prefs.last_active_workspace = None;
+            self.clear_workspace_selection();
+        }
+        self.persist_workspace_navigation();
+        true
+    }
+
+    pub fn close_active_workspace_tab(&mut self) -> bool {
+        self.active_workspace_id()
+            .cloned()
+            .is_some_and(|id| self.close_workspace_tab(&id))
+    }
+
+    pub fn select_relative_workspace_tab(&mut self, delta: isize) -> bool {
+        let tabs = self.workspace_tabs();
+        if tabs.is_empty() {
+            return false;
+        }
+        let current = tabs
+            .iter()
+            .position(|project| Some(&project.id) == self.active_workspace_id())
+            .unwrap_or(0);
+        let position = (current as isize + delta.rem_euclid(tabs.len() as isize))
+            .rem_euclid(tabs.len() as isize) as usize;
+        self.set_active_workspace(tabs[position].id.clone())
     }
 
     /// Makes one workspace the sidebar and workbench destination. A workspace
@@ -649,7 +742,12 @@ impl SessionStore {
         if !self.workspace_exists(&id) {
             return false;
         }
+        let tab_opened = self.ensure_workspace_tab(&id);
         let workspace_changed = self.prefs.last_active_workspace.as_ref() != Some(&id);
+        if workspace_changed {
+            self.remember_workspace_context();
+            self.restore_workspace_inspector(&id);
+        }
         self.prefs.last_active_workspace = Some(id.clone());
         self.sidebar_selection.clear();
         self.sidebar_selection_anchor = None;
@@ -658,12 +756,9 @@ impl SessionStore {
             .selected_session()
             .is_some_and(|session| session.project_id == id);
         if selected_matches {
-            if workspace_changed {
-                if let Err(error) = self.persist_preferences() {
-                    eprintln!("zeus: could not remember the active workspace: {error}");
-                }
-                self.invalidate_projection();
-                self.emit(StoreEffect::UiChanged);
+            if workspace_changed || tab_opened {
+                self.remember_workspace_context();
+                self.persist_workspace_navigation();
             }
             return true;
         }
@@ -671,14 +766,9 @@ impl SessionStore {
         if let Some(session) = self.preferred_session_in_workspace(&id) {
             self.focus_session(session);
         } else {
-            let selection_changed = self.selected_session_id.take().is_some();
-            let preference_changed = self.prefs.last_selected_session.take().is_some();
-            if workspace_changed || selection_changed || preference_changed {
-                if let Err(error) = self.persist_preferences() {
-                    eprintln!("zeus: could not remember the active workspace: {error}");
-                }
-                self.invalidate_projection();
-                self.emit(StoreEffect::UiChanged);
+            let selection_changed = self.clear_workspace_selection();
+            if workspace_changed || tab_opened || selection_changed {
+                self.persist_workspace_navigation();
             }
         }
         true
@@ -686,16 +776,76 @@ impl SessionStore {
 
     fn workspace_exists(&self, id: &ProjectId) -> bool {
         self.projects.contains_key(id)
-            || self
-                .sessions
-                .values()
-                .any(|session| &session.project_id == id && !self.closing.contains(&session.id))
+            || self.sessions.values().any(|session| {
+                &session.project_id == id
+                    && !session.is_workbench_terminal()
+                    && !self.closing.contains(&session.id)
+            })
+    }
+
+    fn ensure_workspace_tab(&mut self, id: &ProjectId) -> bool {
+        let tabs = self.prefs.workspace_tabs.get_or_insert_with(Vec::new);
+        if tabs.contains(id) {
+            false
+        } else {
+            tabs.push(id.clone());
+            true
+        }
+    }
+
+    fn remember_workspace_context(&mut self) {
+        let Some(workspace) = self.prefs.last_active_workspace.clone() else {
+            return;
+        };
+        self.prefs
+            .workspace_inspector_tabs
+            .insert(workspace.clone(), self.prefs.inspector_tab);
+        if let Some(session) = self.selected_session()
+            && session.project_id == workspace
+            && !session.is_archived()
+            && !session.is_workbench_terminal()
+            && !self.closing.contains(&session.id)
+        {
+            let id = session.id.clone();
+            self.prefs.workspace_sessions.insert(workspace, id);
+        }
+    }
+
+    fn restore_workspace_inspector(&mut self, id: &ProjectId) {
+        self.prefs.inspector_tab = self
+            .prefs
+            .workspace_inspector_tabs
+            .get(id)
+            .copied()
+            .unwrap_or_default();
+    }
+
+    fn clear_workspace_selection(&mut self) -> bool {
+        let selected = self.selected_session_id.take();
+        if let Some(id) = &selected
+            && self.terminal_residency.remove(id)
+        {
+            self.emit(StoreEffect::DetachAttachment(id.clone()));
+        }
+        let preference_changed = self.prefs.last_selected_session.take().is_some();
+        self.sidebar_selection.clear();
+        self.sidebar_selection_anchor = None;
+        selected.is_some() || preference_changed
+    }
+
+    fn persist_workspace_navigation(&mut self) {
+        if let Err(error) = self.persist_preferences() {
+            eprintln!("zeus: could not remember workspace tabs: {error}");
+        }
+        self.invalidate_projection();
+        self.emit(StoreEffect::UiChanged);
     }
 
     fn preferred_session_in_workspace(&self, id: &ProjectId) -> Option<SessionId> {
-        self.mru_order
-            .iter()
-            .find(|candidate| {
+        self.prefs
+            .workspace_sessions
+            .get(id)
+            .filter(|candidate| {
                 self.sessions.get(*candidate).is_some_and(|session| {
                     &session.project_id == id
                         && !session.is_archived()
@@ -704,6 +854,20 @@ impl SessionStore {
                 })
             })
             .cloned()
+            .or_else(|| {
+                self.mru_order
+                    .iter()
+                    .find(|candidate| {
+                        self.sessions.get(*candidate).is_some_and(|session| {
+                            &session.project_id == id
+                                && !session.is_archived()
+                                && !session.is_workbench_terminal()
+                                && !self.closing.contains(&session.id)
+                                && !self.is_panel_terminal(&session.id)
+                        })
+                    })
+                    .cloned()
+            })
             .or_else(|| {
                 projection::build_projection(
                     &self.sessions,
@@ -715,38 +879,120 @@ impl SessionStore {
                 .projects
                 .into_iter()
                 .find(|group| &group.project.id == id)
-                .and_then(|group| group.active.first().map(|session| session.id.clone()))
+                .and_then(|group| {
+                    group
+                        .active
+                        .iter()
+                        .find(|session| !self.is_panel_terminal(&session.id))
+                        .map(|session| session.id.clone())
+                })
             })
     }
 
     fn repair_active_workspace(&mut self) {
-        let previous = self.prefs.last_active_workspace.clone();
-        let restored = previous
+        let previous = self.prefs.clone();
+        if self.prefs.workspace_tabs.is_none() {
+            let workspace = self
+                .prefs
+                .last_active_workspace
+                .as_ref()
+                .filter(|id| self.workspace_exists(id))
+                .cloned()
+                .or_else(|| {
+                    self.selected_session()
+                        .map(|session| session.project_id.clone())
+                })
+                .or_else(|| {
+                    projection::build_projection(
+                        &self.sessions,
+                        &self.projects,
+                        &self.prefs,
+                        self.selected_session_id.as_ref(),
+                        &self.closing,
+                    )
+                    .projects
+                    .into_iter()
+                    .map(|group| group.project.id)
+                    .next()
+                });
+            self.prefs.workspace_tabs = Some(workspace.into_iter().collect());
+        }
+        let valid: HashSet<_> = self
+            .projects
+            .keys()
+            .cloned()
+            .chain(
+                self.sessions
+                    .values()
+                    .filter(|session| {
+                        !session.is_workbench_terminal() && !self.closing.contains(&session.id)
+                    })
+                    .map(|session| session.project_id.clone()),
+            )
+            .collect();
+        let tabs = self
+            .prefs
+            .workspace_tabs
+            .as_mut()
+            .expect("migrated tab list");
+        let mut seen = HashSet::new();
+        tabs.retain(|id| valid.contains(id) && seen.insert(id.clone()));
+        self.prefs.workspace_sessions.retain(|workspace, id| {
+            valid.contains(workspace)
+                && self.sessions.get(id).is_some_and(|session| {
+                    &session.project_id == workspace
+                        && !session.is_archived()
+                        && !session.is_workbench_terminal()
+                        && !self.closing.contains(&session.id)
+                })
+        });
+        self.prefs
+            .workspace_inspector_tabs
+            .retain(|workspace, _| valid.contains(workspace));
+        let previous_position = previous
+            .workspace_tabs
             .as_ref()
-            .filter(|id| self.workspace_exists(id))
+            .and_then(|tabs| {
+                tabs.iter()
+                    .position(|id| Some(id) == previous.last_active_workspace.as_ref())
+            })
+            .unwrap_or(0);
+        self.prefs.last_active_workspace = previous
+            .last_active_workspace
+            .as_ref()
+            .filter(|id| tabs.contains(id))
             .cloned()
             .or_else(|| {
-                self.selected_session()
-                    .map(|session| session.project_id.clone())
-            })
-            .or_else(|| {
-                projection::build_projection(
-                    &self.sessions,
-                    &self.projects,
-                    &self.prefs,
-                    self.selected_session_id.as_ref(),
-                    &self.closing,
-                )
-                .projects
-                .into_iter()
-                .map(|group| group.project.id)
-                .next()
+                tabs.get(previous_position.min(tabs.len().saturating_sub(1)))
+                    .cloned()
             });
-        self.prefs.last_active_workspace = restored;
-        if self.prefs.last_active_workspace != previous
-            && let Err(error) = self.persist_preferences()
-        {
-            eprintln!("zeus: could not repair the active workspace: {error}");
+        if let Some(id) = self.prefs.last_active_workspace.clone() {
+            // The global inspector choice belongs to the restored workspace
+            // when its per-workspace preference has not been written yet.
+            if previous.workspace_tabs.is_none()
+                || previous.last_active_workspace.as_ref() == Some(&id)
+            {
+                self.prefs
+                    .workspace_inspector_tabs
+                    .entry(id.clone())
+                    .or_insert(previous.inspector_tab);
+            }
+            self.restore_workspace_inspector(&id);
+        } else {
+            self.clear_workspace_selection();
+        }
+        if self.prefs != previous {
+            let navigation_changed = previous.last_active_workspace
+                != self.prefs.last_active_workspace
+                || previous.last_selected_session != self.prefs.last_selected_session
+                || previous.inspector_tab != self.prefs.inspector_tab
+                || previous.workspace_tabs.as_deref().unwrap_or_default()
+                    != self.prefs.workspace_tabs.as_deref().unwrap_or_default();
+            if navigation_changed {
+                self.persist_workspace_navigation();
+            } else if let Err(error) = self.persist_preferences() {
+                eprintln!("zeus: could not repair workspace preferences: {error}");
+            }
         }
     }
 
@@ -766,11 +1012,16 @@ impl SessionStore {
     /// idempotent in the Engine, and the local guard avoids a needless RPC
     /// when the workspace selector chooses an existing sidebar project.
     pub fn add_project(&mut self, root: String) -> bool {
-        if let Some(id) = self
-            .projects
-            .values()
-            .find(|project| project.root == root)
-            .map(|project| project.id.clone())
+        if let Some(id) =
+            self.projects
+                .values()
+                .find(|project| {
+                    project.root == root
+                        && !self.sessions.values().any(|session| {
+                            session.project_id == project.id && session.host.is_some()
+                        })
+                })
+                .map(|project| project.id.clone())
         {
             self.project_add_error = None;
             self.set_active_workspace(id);
@@ -954,6 +1205,22 @@ impl SessionStore {
         &self.terminal_residency
     }
 
+    pub(crate) fn begin_panel_launch(&mut self) {
+        self.pending_panel_launches += 1;
+    }
+
+    pub(crate) fn end_panel_launch(&mut self) {
+        self.pending_panel_launches = self.pending_panel_launches.saturating_sub(1);
+    }
+
+    fn is_panel_terminal(&self, id: &SessionId) -> bool {
+        self.prefs.workspace_panel_tabs.values().any(|tabs| {
+            tabs.tabs
+                .iter()
+                .any(|tab| tab.session_id.as_ref() == Some(id))
+        })
+    }
+
     pub fn app_is_active(&self) -> bool {
         self.app_is_active
     }
@@ -978,8 +1245,16 @@ impl SessionStore {
     }
 
     pub fn update_preferences(&mut self, update: impl FnOnce(&mut Prefs)) -> io::Result<()> {
+        let previous_inspector = self.prefs.inspector_tab;
         update(&mut self.prefs);
         self.prefs.normalize();
+        if self.prefs.inspector_tab != previous_inspector
+            && let Some(workspace) = self.active_workspace_id().cloned()
+        {
+            self.prefs
+                .workspace_inspector_tabs
+                .insert(workspace, self.prefs.inspector_tab);
+        }
         self.invalidate_projection();
         self.persist_preferences()?;
         if matches!(self.daemon_state, DaemonState::Connected) {
@@ -1385,6 +1660,7 @@ impl SessionStore {
     }
 
     pub fn hydrate(&mut self, result: SessionListResult) {
+        let mut selection_cleared = false;
         // A full resync is the authority: anything still listed here outlived
         // its close (daemon restart, failed terminate) and belongs on screen.
         self.closing.clear();
@@ -1403,7 +1679,7 @@ impl SessionStore {
             .as_ref()
             .is_some_and(|id| !self.sessions.contains_key(id))
         {
-            self.selected_session_id = None;
+            selection_cleared = self.clear_workspace_selection();
         }
         self.invalidate_projection();
         self.sync_sidebar_order();
@@ -1412,7 +1688,7 @@ impl SessionStore {
             .selected_session()
             .is_some_and(|session| self.active_workspace_id() != Some(&session.project_id))
         {
-            self.selected_session_id = None;
+            selection_cleared |= self.clear_workspace_selection();
         }
         self.auto_select_if_needed_without_resume();
         // A restored selection did not travel through `focus_session`, so it
@@ -1428,6 +1704,11 @@ impl SessionStore {
             if let Some(evicted) = update.evicted {
                 self.emit(StoreEffect::DetachAttachment(evicted));
             }
+        }
+        let previous = self.prefs.clone();
+        self.remember_workspace_context();
+        if self.prefs != previous || selection_cleared {
+            self.persist_workspace_navigation();
         }
         self.reconcile_navigation();
     }
@@ -1519,7 +1800,15 @@ impl SessionStore {
     pub fn upsert_session(&mut self, session: SessionRecord) {
         let previous = self.sessions.get(&session.id).cloned();
         let is_new = previous.is_none();
+        let workspace_changed = previous
+            .as_ref()
+            .is_some_and(|previous| previous.project_id != session.project_id);
         let id = session.id.clone();
+        let selected_workspace_changed =
+            workspace_changed && self.selected_session_id.as_ref() == Some(&id);
+        if selected_workspace_changed {
+            self.remember_workspace_context();
+        }
         let transitions = transitions_for_update(
             previous.as_deref(),
             &session,
@@ -1565,7 +1854,7 @@ impl SessionStore {
         self.invalidate_projection();
         // Only membership moves the order, and a session record is republished
         // on every title, status, and resource tick.
-        if is_new {
+        if is_new || workspace_changed {
             self.sync_sidebar_order();
         }
         for transition in transitions {
@@ -1576,15 +1865,27 @@ impl SessionStore {
             // the row and detach its terminal immediately; `session.remove`
             // then clears the authoritative Engine record.
             self.remove_sessions(vec![id]);
+            self.repair_active_workspace();
+            self.auto_select_if_needed_without_resume();
             return;
         }
-        self.auto_resume_if_needed(&id);
+        if selected_workspace_changed {
+            // Authoritative location changes move desktop focus, but do not
+            // turn a daemon update into an implicit process restart.
+            self.focus_session_with_resume(id.clone(), false);
+        } else {
+            self.auto_resume_if_needed(&id);
+        }
         if is_new {
             if self.selected_session_id.as_ref() == Some(&id) {
                 self.focus_session(id);
             } else {
                 self.auto_select_if_needed();
             }
+        }
+        if workspace_changed {
+            self.repair_active_workspace();
+            self.auto_select_if_needed_without_resume();
         }
         self.reconcile_navigation();
     }
@@ -1604,6 +1905,8 @@ impl SessionStore {
         }
         self.invalidate_projection();
         self.sync_sidebar_order();
+        self.repair_active_workspace();
+        self.auto_select_if_needed_without_resume();
         self.reconcile_navigation();
     }
 
@@ -2288,8 +2591,7 @@ impl SessionStore {
 
     fn focus_session_with_resume(&mut self, id: SessionId, resume: bool) {
         let selection_changed = self.selected_session_id.as_ref() != Some(&id);
-        self.selected_session_id = Some(id.clone());
-        let revealed = self.reveal(&id);
+        self.remember_workspace_context();
         let workspace = self
             .sessions
             .get(&id)
@@ -2297,12 +2599,27 @@ impl SessionStore {
         let workspace_changed = workspace
             .as_ref()
             .is_some_and(|workspace| self.prefs.last_active_workspace.as_ref() != Some(workspace));
+        let mut tab_opened = false;
         if let Some(workspace) = workspace {
-            self.prefs.last_active_workspace = Some(workspace);
+            tab_opened = self.ensure_workspace_tab(&workspace);
+            if workspace_changed {
+                self.restore_workspace_inspector(&workspace);
+            }
+            self.prefs.last_active_workspace = Some(workspace.clone());
+            if self
+                .sessions
+                .get(&id)
+                .is_some_and(|session| !session.is_archived() && !session.is_workbench_terminal())
+            {
+                self.prefs.workspace_sessions.insert(workspace, id.clone());
+            }
         }
+        self.selected_session_id = Some(id.clone());
+        let revealed = self.reveal(&id);
         if selection_changed
             || revealed
             || workspace_changed
+            || tab_opened
             || self.prefs.last_selected_session.as_ref() != Some(&id)
         {
             self.prefs.last_selected_session = Some(id.clone());
@@ -2343,8 +2660,7 @@ impl SessionStore {
         if let Some(id) = survivor {
             self.focus_session(id);
         } else {
-            self.selected_session_id = None;
-            if self.prefs.last_selected_session.take().is_some()
+            if self.clear_workspace_selection()
                 && let Err(error) = self.persist_preferences()
             {
                 eprintln!("zeus: could not clear the selected session: {error}");
@@ -2354,32 +2670,20 @@ impl SessionStore {
     }
 
     fn auto_select_if_needed(&mut self) {
-        if self.selected_session_id.is_some() {
+        if self.selected_session_id.is_some() || self.pending_panel_launches > 0 {
             return;
         }
         let active_workspace = self.active_workspace_id().cloned();
-        let first = self
-            .sidebar_projection()
-            .projects
-            .iter()
-            .find(|group| Some(&group.project.id) == active_workspace.as_ref())
-            .and_then(|group| group.active.first())
-            .map(|session| session.id.clone());
+        let first = active_workspace.and_then(|id| self.preferred_session_in_workspace(&id));
         self.set_selected_survivor(first);
     }
 
     fn auto_select_if_needed_without_resume(&mut self) {
-        if self.selected_session_id.is_some() {
+        if self.selected_session_id.is_some() || self.pending_panel_launches > 0 {
             return;
         }
         let active_workspace = self.active_workspace_id().cloned();
-        let first = self
-            .sidebar_projection()
-            .projects
-            .iter()
-            .find(|group| Some(&group.project.id) == active_workspace.as_ref())
-            .and_then(|group| group.active.first())
-            .map(|session| session.id.clone());
+        let first = active_workspace.and_then(|id| self.preferred_session_in_workspace(&id));
         if let Some(first) = first {
             self.focus_session_with_resume(first, false);
         } else {

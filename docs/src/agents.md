@@ -31,7 +31,7 @@ reduces them to a small vocabulary:
 
 | State | Meaning |
 |-------|---------|
-| **Working** | The agent is doing something. In the workflow tree the mark wears a spinner. |
+| **Working** | The agent is doing something. |
 | **Needs input** | It is blocked on you: a permission, a question, a confirm. Destructive prompts get a sharper color. |
 | **Done** | It finished work you have not opened yet. |
 | **Idle** | Quiet, and you have already seen it. |
@@ -66,12 +66,11 @@ A **plain terminal** (`⌥⌘T`) is your login shell. It still has a sidebar
 row and running/exited status. It does not get agent MCP, resume, or a
 branded mark.
 
-## Marks in the tree
+## Marks in the sidebar
 
-The workflow tree draws unbadged brand marks for Codex, Claude, Grok,
-OpenCode, and Cursor. Other kinds use a terminal glyph. Working sessions
-get a ring around the mark. Titles sit in a caption chip under the icon so
-the rails never run through the name.
+Sidebar rows show the agent's brand mark and session status. Children nest
+under their parent so the relationship remains visible. Select a row to open
+its terminal.
 
 ## Default agent
 

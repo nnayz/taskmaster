@@ -2,8 +2,8 @@
 
 Zeus is most itself when one agent runs others. A hosted session can spawn a
 child, wait until it is done or stuck, read the output, answer a prompt, and
-release it. Those children are real Zeus sessions: sidebar rows, inspector
-diffs, workflow-tree nodes.
+release it. Those children are real Zeus sessions, grouped under their lead
+in the sidebar, with their own terminal and Review diffs.
 
 This is powerful. A spawned agent runs as your macOS user. Only talk to
 agents you trust, and read what they ask before you approve it.
@@ -49,7 +49,7 @@ You do not need to name the tools. Talk to the lead in the terminal:
 > PR description. Do not merge.
 
 The lead should `spawn_agent` twice, `wait_for_agent` (or `wait_for_children`),
-and `read_output`. You will see two nested rows and a tree with three nodes.
+and `read_output`. You will see two nested rows under the lead in the sidebar.
 
 If a child is blocked, `⌘⇧J` lands you on it. Answer in that terminal, or
 tell the lead to `send_prompt`.

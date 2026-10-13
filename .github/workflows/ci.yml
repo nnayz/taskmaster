@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Run dependency-free client and fixture conformance tests
@@ -264,7 +264,8 @@ jobs:
           test -f "${helper}"
           test ! -L "${helper}"
           test -x "${helper}"
-          lipo "${helper}" -verify_arch arm64 x86_64
+          lipo "${helper}" -verify_arch arm64
+          lipo "${helper}" -verify_arch x86_64
 
           set +e
           helper_output="$("${helper}" 2>&1)"
@@ -287,6 +288,9 @@ jobs:
         run: |
           app="${RUNNER_TEMP}/zeus-dist/zeus.app"
           plutil -lint "${app}/Contents/Info.plist"
+          test -s "${app}/Contents/Resources/Assets.car"
+          test "$(plutil -extract CFBundleIconName raw "${app}/Contents/Info.plist")" = ZeusIcon
+          test "$(plutil -extract CFBundleIconFile raw "${app}/Contents/Info.plist")" = icon.icns
           test -x "${app}/Contents/Resources/bin/zeus"
           test -x "${app}/Contents/Resources/bin/zeus-mcp"
           test -x "${app}/Contents/Resources/bin/zeusd-rs"

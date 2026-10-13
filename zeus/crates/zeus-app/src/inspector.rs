@@ -11,24 +11,25 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use gpui::{
-    Anchor, Animation, AnimationExt, AnyElement, App, ClipboardItem, Context, DragMoveEvent,
-    Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent,
-    ListHorizontalSizingBehavior, MouseButton, Render, ScrollStrategy, SharedString,
-    StatefulInteractiveElement, Task, UniformListScrollHandle, Window, anchored, deferred, div,
-    ease_out_quint, point, prelude::*, px, rgba, uniform_list,
+    Animation, AnimationExt, AnyElement, App, ClipboardItem, Context, DragMoveEvent, Entity,
+    EventEmitter, FocusHandle, Focusable, FontWeight, KeyDownEvent, ListHorizontalSizingBehavior,
+    MouseButton, Render, ScrollStrategy, SharedString, StatefulInteractiveElement, Task,
+    UniformListScrollHandle, Window, div, ease_out_quint, point, prelude::*, px, rgba,
+    uniform_list,
 };
 use zeus_proto::{
     AgentKind as ProtoAgentKind, ArtifactKind, GitCheckoutDisposition, GitCheckoutMode,
-    GitRefEntry, GitReviewTarget, GitWorkspaceResult, PrCheck, PrDiscussionItem, PullRequestStatus,
-    SessionArtifact, SessionDiffBase, SessionId, SessionReadDiffResult, SessionRecord,
-    SessionStatus,
+    GitRefEntry, GitReviewTarget, GitWorkspaceResult, PrCheck, PrDiscussionItem, ProjectId,
+    PullRequestStatus, SessionArtifact, SessionDiffBase, SessionId, SessionReadDiffResult,
+    SessionRecord, SessionStatus,
 };
 use zeus_ui::{
     AgentKind, AgentLogo, Fill, FloatingSurface, Ink, LoadingIndicator, Metrics, Radius,
     SemanticColors, Typo,
 };
 
-use crate::code_viewer::{CodeViewer, word_wrap_ranges};
+use crate::browser_panel::{BrowserPanel, BrowserPanelEvent};
+use crate::code_viewer::{CodeViewer, CodeViewerEvent, word_wrap_ranges};
 use crate::diff::{
     DiffFile, DiffHunk, DiffLayer, DiffRow, DiffRowKind, DiffSnapshot, load_local_diff,
     preview_diff_snapshot, snapshot_from_read_diff,
@@ -38,31 +39,23 @@ use crate::git_review::{PatchMutation, ReviewStatus, preview_workspace};
 use crate::macos::sf_symbols::{SymbolWeight, sf_symbol, sf_symbol_weighted};
 use crate::markdown::MarkdownDocument;
 use crate::markdown_view::render_markdown;
+use crate::panel_header::{PanelHeader, PanelHeaderEvent};
+use crate::panel_tabs::{PanelTabKind, PanelTabs};
+use crate::panel_terminal::{PanelTerminal, PanelTerminalEvent};
 use crate::query_editor::{self, ClipboardEdit, Edit, QueryEditor};
 use crate::review_prompt::{ReviewEvidence, ReviewLayer, ReviewPrompt};
 use crate::store::{InspectorTab, SessionStore, StoreRuntime};
-use crate::updates::{UpdateCommand, UpdatePhase, UpdateState};
-use crate::usage::{UsageFormat, UsageSnapshot};
 
 const DIFF_ROW_HEIGHT: f32 = 20.0;
 const GUTTER_WIDTH: f32 = 68.0;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(1400);
 const SCROLLBAR_INSET: f32 = 4.0;
 const SCROLLBAR_MIN_THUMB: f32 = 34.0;
-/// Window-button lane the mirrored panel carries in its toolbar. The tab strip
-/// already starts 8pt in, which counts toward the window-space safe boundary.
-const TRAFFIC_LIGHT_LANE: f32 =
-    Metrics::TOOLBAR_TRAFFIC_LIGHT_SAFE_RIGHT - INSPECTOR_HEADER_LEADING_INSET;
-const INSPECTOR_HEADER_LEADING_INSET: f32 = 8.0;
-const ACCOUNT_MENU_WIDTH: f32 = 244.0;
 
-/// Narrowest width that still fits the tab strip, panel toggle, account avatar,
-/// and (when mirrored) the macOS window-button lane.
-///
-/// Both orientations use the conservative width so flipping the workbench can
-/// never change the center terminal's allocation.
+/// Fits the compact panel tabs and toggle, including the native window-button
+/// lane when the inspector is docked on the leading edge.
 pub fn min_width() -> f32 {
-    300.0 + TRAFFIC_LIGHT_LANE
+    300.0
 }
 
 #[derive(Clone, Copy)]
@@ -92,39 +85,16 @@ struct ScrollbarMetrics {
 pub enum InspectorEvent {
     Close,
     SessionActivated,
-    OpenSettings,
-    AddRemoteHost,
-    Update(UpdateCommand),
     FocusSession(SessionId),
 }
 
 impl InspectorTab {
-    const ALL: [Self; 4] = [Self::Info, Self::Changes, Self::Code, Self::Artifacts];
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Info => "Info",
-            Self::Changes => "Review",
-            Self::Code => "Code",
-            Self::Artifacts => "Artifacts",
-        }
-    }
-
     const fn index(self) -> i8 {
         match self {
             Self::Info => 0,
             Self::Changes => 1,
             Self::Code => 2,
             Self::Artifacts => 3,
-        }
-    }
-
-    const fn debug_selector(self) -> &'static str {
-        match self {
-            Self::Info => "INSPECTOR_TAB_INFO",
-            Self::Changes => "INSPECTOR_TAB_CHANGES",
-            Self::Code => "INSPECTOR_TAB_CODE",
-            Self::Artifacts => "INSPECTOR_TAB_ARTIFACTS",
         }
     }
 }
@@ -302,6 +272,16 @@ pub struct WorkbenchInspector {
     _tokio_owner: Arc<tokio::runtime::Runtime>,
     tokio: tokio::runtime::Handle,
     code_viewer: Entity<CodeViewer>,
+    panel_header: Entity<PanelHeader>,
+    panel_tabs: PanelTabs,
+    panel_workspace: Option<ProjectId>,
+    panel_cache: HashMap<ProjectId, PanelTabs>,
+    panel_terminals: HashMap<(Option<ProjectId>, u64), Entity<PanelTerminal>>,
+    panel_browsers: HashMap<(Option<ProjectId>, u64), Entity<BrowserPanel>>,
+    panel_files: HashMap<(Option<ProjectId>, u64), Entity<CodeViewer>>,
+    panel_pending_focus: bool,
+    panel_native_occluded: bool,
+    panel_browser_preview: bool,
     markdown_cache: HashMap<String, Arc<MarkdownDocument>>,
     focus: FocusHandle,
     visible: bool,
@@ -347,11 +327,8 @@ pub struct WorkbenchInspector {
     scroll: UniformListScrollHandle,
     scrollbar_interaction: ScrollbarInteraction,
     scrollbar_layout_primed: bool,
-    account_open: bool,
     identity_open: bool,
-    preview_account: bool,
-    usage: Option<UsageSnapshot>,
-    update: UpdateState,
+    preview: bool,
     refresh_task: Option<Task<()>>,
     poll_task: Option<Task<()>>,
     _store_changes: Task<()>,
@@ -372,16 +349,48 @@ impl WorkbenchInspector {
         cx: &mut Context<Self>,
     ) -> Self {
         let tokio = tokio_owner.handle().clone();
-        let (selected_tab, word_wrap, panel_width) = {
+        let (selected_tab, word_wrap, panel_width, panel_workspace, panel_cache) = {
             let store = runtime.store.read().expect("session store lock poisoned");
             let preferences = store.preferences();
             (
                 preferences.inspector_tab,
                 preferences.inspector_word_wrap,
                 preferences.inspector_width,
+                store.active_workspace_id().cloned(),
+                preferences.workspace_panel_tabs.clone(),
             )
         };
         let code_viewer = cx.new(|cx| CodeViewer::new(tokio.clone(), word_wrap, panel_width, cx));
+        let panel_tabs = panel_workspace
+            .as_ref()
+            .and_then(|id| panel_cache.get(id))
+            .cloned()
+            .unwrap_or_else(|| PanelTabs::new(panel_kind_for_inspector(selected_tab)));
+        let selected_tab = panel_tabs
+            .active_tab()
+            .map_or(InspectorTab::Info, |tab| inspector_for_panel_kind(tab.kind));
+        let panel_header = cx.new(PanelHeader::new);
+        cx.subscribe(&panel_header, |this, _, event, cx| match event {
+            PanelHeaderEvent::Open(kind) => this.open_panel_tab(*kind, cx),
+            PanelHeaderEvent::Select(id) => this.select_panel_tab(*id, cx),
+            PanelHeaderEvent::Close(id) => this.close_panel_tab(*id, cx),
+            PanelHeaderEvent::ClosePanel => cx.emit(InspectorEvent::Close),
+            PanelHeaderEvent::MenuChanged(open) => {
+                if *open {
+                    for browser in this.panel_browsers.values() {
+                        browser.update(cx, |browser, cx| browser.deactivate(cx));
+                    }
+                }
+                cx.notify();
+            }
+        })
+        .detach();
+        cx.subscribe(&code_viewer, |this, _, event, cx| {
+            if let CodeViewerEvent::OpenFile { cwd, reference } = event {
+                this.open_file_reference(cwd.clone(), reference.clone(), cx);
+            }
+        })
+        .detach();
         let focus = cx.focus_handle();
         let mut changes = runtime.changes();
         let store_changes = cx.spawn(async move |this, cx| {
@@ -404,6 +413,16 @@ impl WorkbenchInspector {
             _tokio_owner: tokio_owner,
             tokio,
             code_viewer,
+            panel_header,
+            panel_tabs,
+            panel_workspace,
+            panel_cache,
+            panel_terminals: HashMap::new(),
+            panel_browsers: HashMap::new(),
+            panel_files: HashMap::new(),
+            panel_pending_focus: false,
+            panel_native_occluded: false,
+            panel_browser_preview: false,
             markdown_cache: HashMap::new(),
             focus,
             visible: false,
@@ -449,11 +468,8 @@ impl WorkbenchInspector {
             scroll: UniformListScrollHandle::new(),
             scrollbar_interaction: ScrollbarInteraction::default(),
             scrollbar_layout_primed: false,
-            account_open: false,
             identity_open: false,
-            preview_account: false,
-            usage: None,
-            update: UpdateState::default(),
+            preview: false,
             refresh_task: None,
             poll_task: None,
             _store_changes: store_changes,
@@ -472,7 +488,6 @@ impl WorkbenchInspector {
             // *periodic* poll below, not this edge-triggered refresh.
             self.refresh(true, cx);
         } else {
-            self.account_open = false;
             self.comparison_menu_open = false;
             self.files_open = false;
             self.ask_draft = None;
@@ -483,10 +498,33 @@ impl WorkbenchInspector {
         cx.notify();
     }
 
-    pub fn set_preview_account(&mut self, preview: bool) {
-        self.preview_account = preview;
+    pub fn set_preview(&mut self, preview: bool) {
+        self.preview = preview;
         if preview {
             self.diff_layer = DiffLayer::Working;
+        }
+    }
+
+    pub(crate) fn configure_panel_preview(
+        &mut self,
+        mode: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.panel_browser_preview = mode == "browser";
+        self.panel_tabs = PanelTabs::empty();
+        self.open_panel_tab(PanelTabKind::Details, cx);
+        if mode == "browser" {
+            self.open_panel_tab(PanelTabKind::Browser, cx);
+        } else {
+            self.open_panel_tab(PanelTabKind::Terminal, cx);
+            self.open_panel_tab(PanelTabKind::Files, cx);
+            self.open_panel_tab(PanelTabKind::Terminal, cx);
+        }
+        if mode == "menu" {
+            self.panel_pending_focus = false;
+            self.panel_header
+                .update(cx, |header, cx| header.open_add_menu(window, cx));
         }
     }
 
@@ -501,18 +539,8 @@ impl WorkbenchInspector {
         cx.notify();
     }
 
-    pub fn set_usage(&mut self, snapshot: UsageSnapshot, cx: &mut Context<Self>) {
-        self.usage = Some(snapshot);
-        cx.notify();
-    }
-
-    pub fn set_update(&mut self, state: UpdateState, cx: &mut Context<Self>) {
-        self.update = state;
-        cx.notify();
-    }
-
     fn reconcile_diff_polling(&mut self, cx: &mut Context<Self>) {
-        let should_poll = !self.preview_account
+        let should_poll = !self.preview
             && self.visible
             && matches!(
                 self.selected_tab,
@@ -581,17 +609,19 @@ impl WorkbenchInspector {
     ) {
         let cwd = cwd.into();
         let reference = reference.into();
-        self.code_viewer.update(cx, |viewer, cx| {
-            viewer.open_reference(cwd, reference, cx);
-        });
-        self.select_tab(InspectorTab::Code, cx);
+        if let Some(id) = self.panel_tabs.open_file(cwd, reference) {
+            self.select_panel_tab(id, cx);
+            self.panel_pending_focus = true;
+        }
     }
 
     /// An explicit Code destination can stand on its own before an agent has
     /// been selected. RootView uses this to let Cmd+P reveal a startup file
     /// without weakening the normal session gate for Info/Review/Artifacts.
-    pub const fn is_code_destination(&self) -> bool {
-        matches!(self.selected_tab, InspectorTab::Code)
+    pub fn is_code_destination(&self) -> bool {
+        self.panel_tabs
+            .active_tab()
+            .is_none_or(|tab| !matches!(tab.kind, PanelTabKind::Details | PanelTabKind::Review))
     }
 
     pub fn focus_code_tree(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -615,6 +645,7 @@ impl WorkbenchInspector {
     }
 
     fn refresh_if_context_changed(&mut self, cx: &mut Context<Self>) {
+        self.sync_workspace_tab(cx);
         if !self.visible {
             return;
         }
@@ -632,15 +663,11 @@ impl WorkbenchInspector {
     }
 
     fn select_tab(&mut self, tab: InspectorTab, cx: &mut Context<Self>) {
-        if self.selected_tab == tab {
-            return;
+        let kind = panel_kind_for_inspector(tab);
+        if let Some(id) = self.panel_tabs.open(kind) {
+            self.panel_tabs.select(id);
         }
-        self.tab_direction = if tab.index() > self.selected_tab.index() {
-            1.0
-        } else {
-            -1.0
-        };
-        self.selected_tab = tab;
+        self.persist_panel_tabs(cx);
         if let Err(error) = self
             .runtime
             .store
@@ -650,16 +677,434 @@ impl WorkbenchInspector {
         {
             eprintln!("zeus: could not remember inspector tab: {error}");
         }
+        self.apply_selected_tab(tab, cx);
+    }
+
+    /// Workspace activation restores the global projection of its remembered
+    /// inspector tab. Apply that projection without writing it back to a
+    /// different workspace, including while the inspector is hidden.
+    pub(crate) fn sync_workspace_tab(&mut self, cx: &mut Context<Self>) {
+        let (workspace, mut tab, saved) = {
+            let store = self
+                .runtime
+                .store
+                .read()
+                .expect("session store lock poisoned");
+            let workspace = store.active_workspace_id().cloned();
+            let saved = workspace
+                .as_ref()
+                .and_then(|id| store.preferences().workspace_panel_tabs.get(id))
+                .cloned();
+            (workspace, store.preferences().inspector_tab, saved)
+        };
+        if workspace != self.panel_workspace {
+            if let Some(previous) = &self.panel_workspace {
+                self.panel_cache
+                    .insert(previous.clone(), self.panel_tabs.clone());
+            }
+            self.panel_header
+                .update(cx, |header, cx| header.dismiss(cx));
+            self.panel_tabs = saved
+                .or_else(|| {
+                    workspace
+                        .as_ref()
+                        .and_then(|id| self.panel_cache.get(id))
+                        .cloned()
+                })
+                .unwrap_or_else(|| PanelTabs::new(panel_kind_for_inspector(tab)));
+            self.panel_workspace = workspace;
+            tab = self
+                .panel_tabs
+                .active_tab()
+                .map_or(InspectorTab::Info, |tab| inspector_for_panel_kind(tab.kind));
+        } else {
+            tab = self
+                .panel_tabs
+                .active_tab()
+                .map_or(InspectorTab::Info, |tab| inspector_for_panel_kind(tab.kind));
+        }
+        if self.selected_tab == tab {
+            if self.visible && self.selected_context() != self.context {
+                self.refresh(true, cx);
+            }
+            return;
+        }
+        self.apply_selected_tab(tab, cx);
+        if matches!(tab, InspectorTab::Info | InspectorTab::Artifacts)
+            && self.selected_context() != self.context
+        {
+            self.refresh(true, cx);
+        }
+    }
+
+    fn persist_panel_tabs(&mut self, cx: &mut Context<Self>) {
+        if let Some(workspace) = self.panel_workspace.clone() {
+            let tabs = self.panel_tabs.clone();
+            self.panel_cache.insert(workspace.clone(), tabs.clone());
+            if let Err(error) = self
+                .runtime
+                .store
+                .write()
+                .expect("session store lock poisoned")
+                .update_preferences(|prefs| {
+                    prefs.workspace_panel_tabs.insert(workspace, tabs);
+                })
+            {
+                eprintln!("zeus: could not remember panel tabs: {error}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn open_panel_tab(&mut self, kind: PanelTabKind, cx: &mut Context<Self>) {
+        if let Some(id) = self.panel_tabs.open(kind) {
+            self.select_panel_tab(id, cx);
+            self.panel_pending_focus = true;
+        }
+    }
+
+    fn select_panel_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        if !self.panel_tabs.tabs.iter().any(|tab| tab.id == id) {
+            return;
+        }
+        self.panel_tabs.select(id);
+        let tab = self
+            .panel_tabs
+            .active_tab()
+            .map_or(InspectorTab::Info, |tab| inspector_for_panel_kind(tab.kind));
+        self.persist_panel_tabs(cx);
+        let _ = self
+            .runtime
+            .store
+            .write()
+            .expect("session store lock poisoned")
+            .update_preferences(|prefs| prefs.inspector_tab = tab);
+        self.apply_selected_tab(tab, cx);
+        self.panel_pending_focus = false;
+    }
+
+    fn close_panel_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        let key = (self.panel_workspace.clone(), id);
+        if let Some(viewer) = self.panel_files.get(&key).cloned()
+            && !viewer.update(cx, |viewer, cx| viewer.request_close(cx))
+        {
+            self.select_panel_tab(id, cx);
+            return;
+        }
+        self.finish_close_panel_tab(id, cx);
+    }
+
+    fn finish_close_panel_tab(&mut self, id: u64, cx: &mut Context<Self>) {
+        if !self.panel_tabs.close(id) {
+            return;
+        }
+        let key = (self.panel_workspace.clone(), id);
+        self.panel_files.remove(&key);
+        if let Some(terminal) = self.panel_terminals.get(&key) {
+            terminal.update(cx, |terminal, cx| terminal.deactivate(cx));
+        }
+        self.panel_terminals.remove(&key);
+        if let Some(browser) = self.panel_browsers.get(&key) {
+            browser.update(cx, |browser, cx| browser.deactivate(cx));
+        }
+        self.panel_browsers.remove(&key);
+        if let Some(active) = self.panel_tabs.active {
+            self.select_panel_tab(active, cx);
+        } else {
+            self.persist_panel_tabs(cx);
+            self.apply_selected_tab(InspectorTab::Info, cx);
+        }
+    }
+
+    pub(crate) fn set_native_occluded(
+        &mut self,
+        occluded: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self.panel_native_occluded != occluded;
+        self.panel_native_occluded = occluded;
+        if occluded || !self.visible {
+            for browser in self.panel_browsers.values() {
+                browser.update(cx, |browser, cx| browser.set_visible(false, window, cx));
+            }
+        }
+        if changed {
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn is_focused(&self, window: &Window, cx: &gpui::App) -> bool {
+        let key = self
+            .panel_tabs
+            .active
+            .map(|id| (self.panel_workspace.clone(), id));
+        self.focus.contains_focused(window, cx)
+            || self.panel_header.read(cx).is_focused(window, cx)
+            || key
+                .as_ref()
+                .and_then(|key| self.panel_terminals.get(key))
+                .is_some_and(|terminal| terminal.read(cx).is_focused(window, cx))
+            || key
+                .as_ref()
+                .and_then(|key| self.panel_browsers.get(key))
+                .is_some_and(|browser| browser.read(cx).is_focused(window, cx))
+    }
+
+    pub(crate) fn close_active_panel_tab(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.panel_tabs.active {
+            self.close_panel_tab(id, cx);
+        }
+    }
+
+    pub(crate) fn focus_panel_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.panel_header
+            .update(cx, |header, cx| header.focus(window, cx));
+    }
+
+    pub(crate) fn open_panel_add_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.panel_pending_focus = false;
+        self.panel_header.update(cx, |header, cx| {
+            header.open_add_menu(window, cx);
+            header.focus(window, cx);
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn run_native_browser_smoke(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<Entity<BrowserPanel>, String> {
+        let key = self
+            .panel_tabs
+            .active
+            .map(|id| (self.panel_workspace.clone(), id))
+            .ok_or("No active browser tab")?;
+        let browser = self
+            .panel_browsers
+            .get(&key)
+            .ok_or_else(|| format!("Browser is not mounted (active tab: {:?}, panel visible: {}, retained browsers: {})", self.panel_tabs.active_tab().map(|tab| tab.kind), self.visible, self.panel_browsers.len()))?;
+        browser.update(cx, |browser, cx| browser.native_smoke(window, cx))?;
+        Ok(browser.clone())
+    }
+
+    fn render_panel_body(
+        &mut self,
+        session: Option<&SessionRecord>,
+        colors: SemanticColors,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let active = self.panel_tabs.active_tab().cloned();
+        let active_key = active
+            .as_ref()
+            .map(|tab| (self.panel_workspace.clone(), tab.id));
+        let browser_allowed = self.visible
+            && !self.panel_native_occluded
+            && !self.panel_header.read(cx).is_menu_open();
+        for (key, browser) in &self.panel_browsers {
+            if Some(key) != active_key.as_ref() || !browser_allowed {
+                browser.update(cx, |browser, cx| browser.set_visible(false, window, cx));
+            }
+        }
+        for (key, terminal) in &self.panel_terminals {
+            if Some(key) != active_key.as_ref() || !self.visible {
+                terminal.update(cx, |terminal, cx| terminal.deactivate(cx));
+            }
+        }
+        let Some(tab) = active else {
+            return self
+                .render_message(
+                    colors,
+                    "plus",
+                    "Open a panel tab",
+                    "Use + to open Files, Review, Details, Terminal, or Browser.",
+                )
+                .into_any_element();
+        };
+        let key = (self.panel_workspace.clone(), tab.id);
+        let focus = std::mem::take(&mut self.panel_pending_focus);
+        match tab.kind {
+            PanelTabKind::Details => {
+                if focus {
+                    window.focus(&self.focus, cx);
+                }
+                self.render_info(session, colors, cx)
+            }
+            PanelTabKind::Review => {
+                if focus {
+                    window.focus(&self.focus, cx);
+                }
+                self.render_changes(colors, window, cx)
+            }
+            PanelTabKind::Files => {
+                if focus {
+                    window.focus(&self.code_viewer.read(cx).focus_handle(cx), cx);
+                }
+                self.code_viewer.clone().into_any_element()
+            }
+            PanelTabKind::File => {
+                if !self.panel_files.contains_key(&key) {
+                    let viewer = cx.new(|cx| {
+                        let mut viewer = CodeViewer::new(
+                            self.tokio.clone(),
+                            self.word_wrap,
+                            self.panel_width,
+                            cx,
+                        );
+                        viewer.set_file_tree_visible(false);
+                        if let Some(file) = &tab.file {
+                            viewer.open_reference(file.cwd.clone(), file.reference.clone(), cx);
+                        }
+                        viewer
+                    });
+                    let workspace = self.panel_workspace.clone();
+                    cx.subscribe(&viewer, move |this, _, event, cx| {
+                        if matches!(event, CodeViewerEvent::CloseReady)
+                            && this.panel_workspace == workspace
+                        {
+                            this.finish_close_panel_tab(tab.id, cx);
+                        }
+                    })
+                    .detach();
+                    self.panel_files.insert(key.clone(), viewer);
+                }
+                let viewer = self.panel_files[&key].clone();
+                viewer.update(cx, |viewer, cx| {
+                    viewer.set_viewport_width(self.panel_width, cx);
+                    viewer.set_word_wrap(self.word_wrap, cx);
+                });
+                if focus {
+                    window.focus(&viewer.read(cx).focus_handle(cx), cx);
+                }
+                viewer.into_any_element()
+            }
+            PanelTabKind::Terminal => {
+                if !self.panel_terminals.contains_key(&key) {
+                    let terminal = cx.new(|cx| {
+                        PanelTerminal::new_existing(
+                            Arc::clone(&self.runtime),
+                            Arc::clone(&self._tokio_owner),
+                            self.preview,
+                            tab.session_id.clone(),
+                            cx,
+                        )
+                    });
+                    let workspace = self.panel_workspace.clone();
+                    cx.subscribe(&terminal, move |this, _, event, cx| {
+                        if let PanelTerminalEvent::OpenInMain(session_id) = event {
+                            self::select_session_in_main(this, session_id, cx);
+                        } else if let PanelTerminalEvent::Spawned(session_id) = event {
+                            if this.panel_workspace == workspace {
+                                if let Some(saved) = this
+                                    .panel_tabs
+                                    .tabs
+                                    .iter_mut()
+                                    .find(|saved| saved.id == tab.id)
+                                {
+                                    saved.session_id = Some(session_id.clone());
+                                }
+                                this.persist_panel_tabs(cx);
+                            } else if let Some(workspace) = &workspace
+                                && let Some(tabs) = this.panel_cache.get_mut(workspace)
+                            {
+                                if let Some(saved) =
+                                    tabs.tabs.iter_mut().find(|saved| saved.id == tab.id)
+                                {
+                                    saved.session_id = Some(session_id.clone());
+                                }
+                                let tabs = tabs.clone();
+                                let _ = this
+                                    .runtime
+                                    .store
+                                    .write()
+                                    .expect("session store lock poisoned")
+                                    .update_preferences(|prefs| {
+                                        prefs.workspace_panel_tabs.insert(workspace.clone(), tabs);
+                                    });
+                            }
+                        }
+                    })
+                    .detach();
+                    self.panel_terminals.insert(key.clone(), terminal);
+                }
+                let terminal = self.panel_terminals[&key].clone();
+                if self.visible {
+                    terminal.update(cx, |terminal, cx| terminal.activate(window, cx));
+                }
+                if focus {
+                    terminal.update(cx, |terminal, cx| terminal.focus(window, cx));
+                }
+                terminal.into_any_element()
+            }
+            PanelTabKind::Browser => {
+                let fresh = !self.panel_browsers.contains_key(&key);
+                let browser = self
+                    .panel_browsers
+                    .entry(key)
+                    .or_insert_with(|| cx.new(|cx| BrowserPanel::new(self.preview, cx)))
+                    .clone();
+                if fresh {
+                    cx.subscribe(&browser, |_, _, _: &BrowserPanelEvent, cx| cx.notify())
+                        .detach();
+                }
+                browser.update(cx, |browser, cx| {
+                    browser.set_appearance(colors.appearance, cx);
+                    browser.set_visible(browser_allowed, window, cx)
+                });
+                if fresh && self.panel_browser_preview {
+                    browser.update(cx, |browser, cx| browser.preview_content(window, cx));
+                }
+                let title = if browser.read(cx).title() == "Browser" {
+                    browser
+                        .read(cx)
+                        .target_url()
+                        .and_then(|url| url::Url::parse(url).ok())
+                        .and_then(|url| url.host_str().map(str::to_owned))
+                        .unwrap_or_else(|| tab.title.clone())
+                } else {
+                    browser.read(cx).title().to_owned()
+                };
+                if title != "Browser" && title != tab.title {
+                    if let Some(saved) = self
+                        .panel_tabs
+                        .tabs
+                        .iter_mut()
+                        .find(|saved| saved.id == tab.id)
+                    {
+                        saved.title = title.chars().take(256).collect();
+                    }
+                    self.persist_panel_tabs(cx);
+                }
+                if focus {
+                    browser.update(cx, |browser, cx| browser.focus(window, cx));
+                }
+                browser.into_any_element()
+            }
+        }
+    }
+
+    fn apply_selected_tab(&mut self, tab: InspectorTab, cx: &mut Context<Self>) {
+        self.tab_direction = if tab.index() > self.selected_tab.index() {
+            1.0
+        } else {
+            -1.0
+        };
+        self.selected_tab = tab;
         self.comparison_menu_open = false;
         self.tab_transition_generation = self.tab_transition_generation.wrapping_add(1);
         match tab {
             InspectorTab::Changes => self.refresh(true, cx),
-            InspectorTab::Code => {
-                if let Some(context) = self.context.clone() {
+            InspectorTab::Code if self.visible => {
+                if self.selected_context() != self.context {
+                    self.refresh(true, cx);
+                } else if let Some(context) = self.context.clone() {
                     self.refresh_review(&context, true, cx);
                 }
             }
-            InspectorTab::Info | InspectorTab::Artifacts => {}
+            InspectorTab::Info | InspectorTab::Artifacts | InspectorTab::Code => {}
         }
         self.reconcile_diff_polling(cx);
         cx.notify();
@@ -740,6 +1185,9 @@ impl WorkbenchInspector {
             return;
         }
         let Some(context) = self.selected_context() else {
+            self.generation = self.generation.wrapping_add(1);
+            self.refresh_task = None;
+            self.loading = false;
             self.review_navigation_generation = self.review_navigation_generation.wrapping_add(1);
             self.review_action_generation = self.review_action_generation.wrapping_add(1);
             self.review_action_busy = false;
@@ -749,6 +1197,10 @@ impl WorkbenchInspector {
             self.review_generation = self.review_generation.wrapping_add(1);
             self.review_task = None;
             self.review_loading = false;
+            self.discard_armed = false;
+            self.commit_open = false;
+            self.commit_query.clear();
+            self.armed_hunk = None;
             self.code_viewer.update(cx, |viewer, cx| {
                 viewer.set_workspace(None, cx);
                 viewer.set_changed_unavailable("Select a local session", cx);
@@ -766,6 +1218,9 @@ impl WorkbenchInspector {
             self.scrollbar_interaction = ScrollbarInteraction::default();
             self.scrollbar_layout_primed = false;
             self.files_open = false;
+            self.discard_armed = false;
+            self.commit_open = false;
+            self.commit_query.clear();
             self.armed_hunk = None;
             self.ask_draft = None;
             self.ask_feedback = None;
@@ -779,7 +1234,7 @@ impl WorkbenchInspector {
                 .update(cx, |viewer, cx| viewer.set_workspace(workspace, cx));
         }
         self.context = Some(context.clone());
-        if self.preview_account {
+        if self.preview {
             self.loading = false;
             self.review_generation = self.review_generation.wrapping_add(1);
             self.review_task = None;
@@ -1441,521 +1896,17 @@ impl WorkbenchInspector {
         document
     }
 
-    fn account_avatar(&self, colors: SemanticColors, cx: &mut Context<Self>) -> AnyElement {
-        let open = self.account_open;
-        let noteworthy_update = self.update.is_noteworthy();
-        let initial = if self.preview_account { "P" } else { "Z" };
-        div()
-            .id("account-avatar")
-            .debug_selector(|| "INSPECTOR_ACCOUNT_AVATAR".to_owned())
-            .relative()
-            .size(px(Metrics::TOOLBAR_CONTROL_SIZE))
-            .flex_none()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
-            .cursor_pointer()
-            .bg(if open {
-                colors.primary.alpha(0.10)
-            } else {
-                colors.primary.alpha(0.0)
-            })
-            .hover(move |button| button.bg(colors.primary.alpha(if open { 0.13 } else { 0.06 })))
-            .child(
-                div()
-                    .size(px(21.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded_full()
-                    .bg(colors.primary.alpha(if open { 0.16 } else { 0.10 }))
-                    .border_1()
-                    .border_color(colors.primary.alpha(if open { 0.20 } else { 0.12 }))
-                    .text_size(px(10.0))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(if open {
-                        colors.primary
-                    } else {
-                        colors.secondary
-                    })
-                    .child(initial),
-            )
-            .when(noteworthy_update, |avatar| {
-                avatar.child(
-                    div()
-                        .absolute()
-                        .top(px(2.0))
-                        .right(px(1.0))
-                        .size(px(6.0))
-                        .rounded_full()
-                        .bg(zeus_ui::Ink::FRESH),
-                )
-            })
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.account_open = !this.account_open;
-                cx.notify();
-                cx.stop_propagation();
-            }))
-            .into_any_element()
-    }
-
-    fn account_update_row(&self, colors: SemanticColors, cx: &mut Context<Self>) -> AnyElement {
-        let unsupported = matches!(self.update.phase, UpdatePhase::Unsupported(_));
-        let command = match &self.update.phase {
-            UpdatePhase::Available(_) => Some(UpdateCommand::Download),
-            UpdatePhase::Ready(_) => Some(UpdateCommand::Install),
-            UpdatePhase::Checking | UpdatePhase::Downloading { .. } | UpdatePhase::Installing => {
-                None
-            }
-            _ if unsupported => None,
-            _ => Some(UpdateCommand::Check {
-                user_initiated: true,
-            }),
-        };
-        let label = if self.preview_account {
-            format!("zeus {}", crate::updates::CURRENT_VERSION)
-        } else {
-            self.update.summary()
-        };
-        let mut row = div()
-            .id("inspector-account-version")
-            .mx(px(6.0))
-            .px(px(8.0))
-            .h(px(28.0))
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap(px(8.0))
-            .rounded(px(Radius::ROW))
-            .text_size(px(Typo::ROW.size))
-            .text_color(if unsupported {
-                colors.tertiary
-            } else {
-                colors.primary
-            })
-            .child(
-                div()
-                    .min_w(px(0.0))
-                    .flex_1()
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(label),
-            );
-        if let Some(command) = command {
-            let action = match command {
-                UpdateCommand::Download => "Download",
-                UpdateCommand::Install => "Restart",
-                _ => "Check",
-            };
-            row = row
-                .cursor_pointer()
-                .hover(move |element| element.bg(colors.primary.alpha(0.06)))
-                .child(
-                    div()
-                        .flex_none()
-                        .text_size(px(Typo::META.size))
-                        .text_color(colors.secondary)
-                        .child(action),
-                )
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.account_open = false;
-                    cx.emit(InspectorEvent::Update(command.clone()));
-                    cx.notify();
-                }));
-        }
-        row.into_any_element()
-    }
-
-    fn account_popover(
-        &self,
-        colors: SemanticColors,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let mut usage = div()
-            .flex()
-            .flex_col()
-            .child(account_section_label("Usage", colors));
-        if self.preview_account {
-            usage = usage
-                .child(account_usage_row(
-                    "Session",
-                    "resets in 2h 14m",
-                    "$2.31",
-                    colors,
-                ))
-                .child(account_usage_row("Today", "1.8M tokens", "$4.82", colors))
-                .child(account_usage_row("This month", "", "$86.40", colors));
-        } else if let Some(snapshot) = self.usage {
-            usage = usage
-                .child(account_usage_row(
-                    "Session",
-                    snapshot
-                        .session_remaining_seconds
-                        .map(|seconds| format!("resets in {}", compact_duration(seconds)))
-                        .as_deref()
-                        .unwrap_or("idle"),
-                    &snapshot
-                        .session_cost
-                        .map(UsageFormat::money)
-                        .unwrap_or_else(|| "—".into()),
-                    colors,
-                ))
-                .child(account_usage_row(
-                    "Today",
-                    &format!(
-                        "{} tokens",
-                        UsageFormat::tokens(snapshot.today().total_tokens())
-                    ),
-                    &UsageFormat::money(snapshot.today().cost),
-                    colors,
-                ))
-                .child(account_usage_row(
-                    "This month",
-                    "",
-                    &UsageFormat::money(snapshot.month().cost),
-                    colors,
-                ));
-        } else {
-            usage = usage.child(
-                div()
-                    .px(px(14.0))
-                    .py(px(6.0))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.tertiary)
-                    .child("Measuring…"),
-            );
-        }
-
-        let content = div()
-            .flex()
-            .flex_col()
-            .child(usage)
-            .child(div().mt(px(8.0)).h(px(1.0)).bg(colors.primary.alpha(0.06)))
-            .child(account_section_label("Version", colors))
-            .child(self.account_update_row(colors, cx))
-            .child(div().mt(px(8.0)).h(px(1.0)).bg(colors.primary.alpha(0.06)))
-            .child(account_section_label("Remote", colors))
-            .child(
-                div()
-                    .id("inspector-add-remote-host")
-                    .debug_selector(|| "INSPECTOR_ADD_REMOTE_HOST".to_owned())
-                    .mx(px(6.0))
-                    .px(px(8.0))
-                    .h(px(30.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(Radius::ROW))
-                    .cursor_pointer()
-                    .hover(move |element| element.bg(colors.primary.alpha(0.06)))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.primary)
-                    .child(sf_symbol("plus", 11.0, colors.secondary))
-                    .child(div().flex_1().child("Add remote host"))
-                    .child(
-                        div()
-                            .text_size(px(Typo::META.size))
-                            .text_color(colors.tertiary)
-                            .child("SSH"),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.account_open = false;
-                        cx.emit(InspectorEvent::AddRemoteHost);
-                        cx.notify();
-                    })),
-            )
-            .child(div().mt(px(8.0)).h(px(1.0)).bg(colors.primary.alpha(0.06)))
-            .child(account_section_label("Account", colors))
-            .child(
-                div()
-                    .id("inspector-open-settings")
-                    .debug_selector(|| "INSPECTOR_OPEN_SETTINGS".to_owned())
-                    .mx(px(6.0))
-                    .px(px(8.0))
-                    .h(px(30.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(Radius::ROW))
-                    .cursor_pointer()
-                    .hover(move |element| element.bg(colors.primary.alpha(0.06)))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.primary)
-                    .child(sf_symbol("gearshape", 11.0, colors.secondary))
-                    .child(div().flex_1().child("Settings"))
-                    .child(
-                        div()
-                            .text_size(px(Typo::META.size))
-                            .text_color(colors.tertiary)
-                            .child("⌘,"),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.account_open = false;
-                        cx.emit(InspectorEvent::OpenSettings);
-                        cx.notify();
-                    })),
-            )
-            .child(
-                div()
-                    .id("inspector-account-active")
-                    .mx(px(6.0))
-                    .px(px(8.0))
-                    .h(px(28.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(Radius::ROW))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.primary)
-                    .child(sf_symbol_weighted(
-                        "checkmark",
-                        10.0,
-                        SymbolWeight::Semibold,
-                        colors.secondary,
-                    ))
-                    .child(if self.preview_account {
-                        "preview@zeus.local"
-                    } else {
-                        "Local agents"
-                    }),
-            )
-            .child(div().mt(px(8.0)).h(px(1.0)).bg(colors.primary.alpha(0.06)))
-            .child(account_section_label("Help", colors))
-            .child(
-                div()
-                    .id("inspector-open-documentation")
-                    .mx(px(6.0))
-                    .px(px(8.0))
-                    .h(px(30.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(Radius::ROW))
-                    .cursor_pointer()
-                    .hover(move |element| element.bg(colors.primary.alpha(0.06)))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.primary)
-                    .child(sf_symbol("link", 11.0, colors.secondary))
-                    .child(div().flex_1().child("Documentation"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.account_open = false;
-                        cx.open_url(crate::settings::DOCS_URL);
-                        cx.notify();
-                    })),
-            )
-            .child(
-                div()
-                    .id("inspector-dismiss-account")
-                    .mx(px(6.0))
-                    .my(px(6.0))
-                    .px(px(8.0))
-                    .h(px(28.0))
-                    .flex()
-                    .items_center()
-                    .rounded(px(Radius::ROW))
-                    .cursor_pointer()
-                    .hover(move |element| element.bg(colors.primary.alpha(0.06)))
-                    .text_size(px(Typo::ROW.size))
-                    .text_color(colors.secondary)
-                    .child("Done")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.account_open = false;
-                        cx.notify();
-                    })),
-            );
-
-        let x = if self.mirrored() {
-            // RootView keeps `panel_width` synchronized with the horizontal
-            // solver, including automatic compact clamps. Anchor floating
-            // inspector chrome to that rendered width rather than the wider
-            // persisted preference.
-            let width = self.panel_width.max(min_width());
-            width - Metrics::TOOLBAR_EDGE_INSET
-        } else {
-            f32::from(window.viewport_size().width) - Metrics::TOOLBAR_EDGE_INSET
-        };
-        let position = point(px(x), px(Metrics::TITLE_BAR + 2.0));
-        div()
-            .absolute()
-            .inset_0()
-            .occlude()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.account_open = false;
-                    cx.notify();
-                }),
-            )
-            .child(
-                deferred(
-                    anchored()
-                        .position(position)
-                        .anchor(Anchor::TopRight)
-                        .snap_to_window_with_margin(px(8.0))
-                        .child(
-                            div()
-                                .w(px(ACCOUNT_MENU_WIDTH))
-                                .occlude()
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|_, _, _, cx| cx.stop_propagation()),
-                                )
-                                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                                    this.account_open = false;
-                                    cx.notify();
-                                }))
-                                .child(FloatingSurface::new(
-                                    colors,
-                                    div()
-                                        .rounded(px(Radius::PANEL))
-                                        .overflow_hidden()
-                                        .py(px(3.0))
-                                        .child(content),
-                                )),
-                        ),
-                )
-                .with_priority(2),
-            )
-            .into_any_element()
-    }
-
     fn render_header(
-        &self,
-        session: Option<&SessionRecord>,
+        &mut self,
         colors: SemanticColors,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let changes_count = match &self.state {
-            LoadState::Ready(snapshot) if snapshot.files > 0 => Some(snapshot.files),
-            _ => None,
-        };
-        let artifacts_count = session.map(artifact_count).filter(|count| *count > 0);
-        let selected_tab = self.selected_tab;
-        let toggle_icon = if self.mirrored() {
-            "sidebar.left"
-        } else {
-            "sidebar.right"
-        };
-        let mut tabs = div()
-            .min_w(px(0.0))
-            .flex_1()
-            .flex()
-            .items_center()
-            .justify_end()
-            .gap(px(2.0));
-
-        for tab in InspectorTab::ALL {
-            let count = match tab {
-                InspectorTab::Info => None,
-                InspectorTab::Changes => changes_count,
-                InspectorTab::Code => None,
-                InspectorTab::Artifacts => artifacts_count,
-            };
-            let active = tab == selected_tab;
-            tabs = tabs.child(
-                div()
-                    .id(SharedString::from(format!("inspector-tab-{}", tab.label())))
-                    .debug_selector(move || tab.debug_selector().to_owned())
-                    .h(px(28.0))
-                    .px(px(6.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(5.0))
-                    .rounded(px(Radius::BADGE))
-                    .cursor_pointer()
-                    .bg(if active {
-                        colors.primary.alpha(0.09)
-                    } else {
-                        colors.primary.alpha(0.0)
-                    })
-                    .hover(move |button| {
-                        button.bg(colors.primary.alpha(if active { 0.11 } else { 0.055 }))
-                    })
-                    .text_size(px(12.0))
-                    .font_weight(if active {
-                        FontWeight::SEMIBOLD
-                    } else {
-                        FontWeight::MEDIUM
-                    })
-                    .text_color(if active {
-                        colors.primary
-                    } else {
-                        colors.secondary
-                    })
-                    .child(tab.label())
-                    // Counts are useful context once a destination is open,
-                    // but four always-visible badges make the 300pt compact
-                    // inspector overlap its close control.
-                    .when_some(count.filter(|_| active), |tab, count| {
-                        tab.child(
-                            div()
-                                .min_w(px(16.0))
-                                .h(px(16.0))
-                                .px(px(4.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_full()
-                                .bg(colors.primary.alpha(if active { 0.10 } else { 0.06 }))
-                                .text_size(px(9.5))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(if active {
-                                    colors.secondary
-                                } else {
-                                    colors.tertiary
-                                })
-                                .child(count.to_string()),
-                        )
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.select_tab(tab, cx);
-                        cx.stop_propagation();
-                    })),
-            );
-        }
-
-        div()
-            .h(px(Metrics::TITLE_BAR))
-            .flex_none()
-            .pl(px(INSPECTOR_HEADER_LEADING_INSET))
-            .pr(px(Metrics::TOOLBAR_EDGE_INSET))
-            .flex()
-            .items_center()
-            .gap(px(Metrics::TOOLBAR_COMPACT_GAP))
-            // Optical safe area for the macOS window buttons, which land on
-            // this toolbar whenever the panel owns the window's leading edge.
-            .when(self.mirrored(), |bar| {
-                bar.child(
-                    div()
-                        .debug_selector(|| "INSPECTOR_TRAFFIC_LIGHT_LANE".to_owned())
-                        .w(px(TRAFFIC_LIGHT_LANE))
-                        .flex_none(),
-                )
-            })
-            .child(
-                div()
-                    .id("toggle-inspector")
-                    .debug_selector(|| "INSPECTOR_TOGGLE".to_owned())
-                    .size(px(Metrics::TOOLBAR_CONTROL_SIZE))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(Radius::BADGE))
-                    .cursor_pointer()
-                    .hover(move |button| button.bg(Fill::subtle(colors)))
-                    .child(sf_symbol(toggle_icon, 15.0, colors.secondary))
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.emit(InspectorEvent::Close);
-                        cx.stop_propagation();
-                    })),
-            )
-            .child(tabs)
-            .child(self.account_avatar(colors, cx))
+    ) -> Entity<PanelHeader> {
+        let tabs = self.panel_tabs.clone();
+        let mirrored = self.mirrored();
+        self.panel_header.update(cx, |header, cx| {
+            header.set_state(tabs, colors.appearance, mirrored, cx)
+        });
+        self.panel_header.clone()
     }
 
     fn render_info(
@@ -2011,8 +1962,8 @@ impl WorkbenchInspector {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(9.0))
-                    .child(AgentLogo::new(kind, 28.0, colors))
+                    .gap(px(8.0))
+                    .child(AgentLogo::new(kind, 24.0, colors))
                     .child(
                         div()
                             .min_w(px(0.0))
@@ -2101,12 +2052,12 @@ impl WorkbenchInspector {
             .id("inspector-info-scroll")
             .size_full()
             .min_h(px(0.0))
-            .px(px(14.0))
+            .px(px(12.0))
             .pt(px(4.0))
-            .pb(px(14.0))
+            .pb(px(12.0))
             .flex()
             .flex_col()
-            .gap(px(11.0))
+            .gap(px(8.0))
             .overflow_y_scroll()
             .child(hero);
 
@@ -2285,6 +2236,7 @@ impl WorkbenchInspector {
                 .child(info_section_label("Runtime", colors))
                 .child(runtime),
         );
+        let artifacts = self.render_artifacts(Some(session), colors, true, cx);
         content
             .child(
                 div()
@@ -2299,6 +2251,8 @@ impl WorkbenchInspector {
                         cx.entity(),
                     )),
             )
+            .child(info_section_label("Artifacts", colors))
+            .child(artifacts)
             .into_any_element()
     }
 
@@ -2426,6 +2380,7 @@ impl WorkbenchInspector {
         &mut self,
         session: Option<&SessionRecord>,
         colors: SemanticColors,
+        inline: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(session) = session else {
@@ -2439,6 +2394,13 @@ impl WorkbenchInspector {
                 .into_any_element();
         };
         if artifact_count(session) == 0 {
+            if inline {
+                return div()
+                    .text_size(px(Typo::ROW.size))
+                    .text_color(colors.secondary)
+                    .child("No artifacts yet")
+                    .into_any_element();
+            }
             return self
                 .render_message(
                     colors,
@@ -2451,15 +2413,18 @@ impl WorkbenchInspector {
 
         let mut content = div()
             .id("inspector-artifacts-scroll")
-            .size_full()
             .min_h(px(0.0))
-            .px(px(12.0))
-            .pt(px(8.0))
-            .pb(px(18.0))
             .flex()
             .flex_col()
-            .gap(px(10.0))
-            .overflow_y_scroll();
+            .gap(px(8.0))
+            .when(!inline, |content| {
+                content
+                    .size_full()
+                    .px(px(12.0))
+                    .pt(px(8.0))
+                    .pb(px(12.0))
+                    .overflow_y_scroll()
+            });
 
         if let Some(pull_requests) = session.pull_requests.as_deref() {
             let inspector = cx.entity();
@@ -2495,12 +2460,12 @@ impl WorkbenchInspector {
                 content = content.child(
                     div()
                         .id(SharedString::from(format!("inspector-port-{}", port.port)))
-                        .min_h(px(54.0))
-                        .px(px(11.0))
-                        .py(px(9.0))
+                        .min_h(px(44.0))
+                        .px(px(8.0))
+                        .py(px(6.0))
                         .flex()
                         .items_center()
-                        .gap(px(10.0))
+                        .gap(px(8.0))
                         .rounded(px(Radius::ROW))
                         .bg(colors.primary.alpha(0.035))
                         .border_1()
@@ -3571,12 +3536,6 @@ impl WorkbenchInspector {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.account_open && event.keystroke.key == "escape" {
-            self.account_open = false;
-            cx.notify();
-            cx.stop_propagation();
-            return;
-        }
         if self.review_picker != ReviewPicker::None {
             match event.keystroke.key.as_str() {
                 "escape" => {
@@ -4484,6 +4443,38 @@ impl WorkbenchInspector {
     }
 }
 
+fn select_session_in_main(
+    inspector: &mut WorkbenchInspector,
+    id: &SessionId,
+    cx: &mut Context<WorkbenchInspector>,
+) {
+    inspector
+        .runtime
+        .store
+        .write()
+        .expect("session store lock poisoned")
+        .select(id.clone());
+    cx.emit(InspectorEvent::SessionActivated);
+}
+
+fn panel_kind_for_inspector(tab: InspectorTab) -> PanelTabKind {
+    match tab {
+        InspectorTab::Info | InspectorTab::Artifacts => PanelTabKind::Details,
+        InspectorTab::Changes => PanelTabKind::Review,
+        InspectorTab::Code => PanelTabKind::Files,
+    }
+}
+
+fn inspector_for_panel_kind(kind: PanelTabKind) -> InspectorTab {
+    match kind {
+        PanelTabKind::Details | PanelTabKind::Terminal | PanelTabKind::Browser => {
+            InspectorTab::Info
+        }
+        PanelTabKind::Review => InspectorTab::Changes,
+        PanelTabKind::Files | PanelTabKind::File => InspectorTab::Code,
+    }
+}
+
 fn git_is_not_a_repository(error: &str) -> bool {
     let error = error.to_ascii_lowercase();
     error.contains("not a git repository")
@@ -4519,21 +4510,13 @@ impl Render for WorkbenchInspector {
             crate::app_theme::sidebar_colors(&store.preferences().terminal_theme)
         };
         let session = self.selected_session();
-        let body = match self.selected_tab {
-            InspectorTab::Info => self.render_info(session.as_ref(), colors, cx),
-            InspectorTab::Artifacts => self.render_artifacts(session.as_ref(), colors, cx),
-            InspectorTab::Changes => self.render_changes(colors, window, cx),
-            InspectorTab::Code => self.code_viewer.clone().into_any_element(),
-        };
+        let body = self.render_panel_body(session.as_ref(), colors, window, cx);
         let transition_id = SharedString::from(format!(
             "inspector-tab-transition-{}",
             self.tab_transition_generation
         ));
         let direction = self.tab_direction;
         let ask_composer = self.render_ask_composer(colors, cx);
-        let account_popover = self
-            .account_open
-            .then(|| self.account_popover(colors, window, cx));
         div()
             .id("workbench-inspector")
             .size_full()
@@ -4544,7 +4527,7 @@ impl Render for WorkbenchInspector {
             .on_key_down(cx.listener(Self::handle_key_down))
             .bg(colors.sidebar_surface())
             .text_color(colors.primary)
-            .child(self.render_header(session.as_ref(), colors, cx))
+            .child(self.render_header(colors, cx))
             .child(div().min_h(px(0.0)).flex_1().overflow_hidden().child(
                 div().relative().size_full().child(body).with_animation(
                     transition_id,
@@ -4556,7 +4539,6 @@ impl Render for WorkbenchInspector {
                 ),
             ))
             .when_some(ask_composer, |panel, composer| panel.child(composer))
-            .when_some(account_popover, |panel, popover| panel.child(popover))
     }
 }
 
@@ -4580,56 +4562,6 @@ fn info_section_label(label: &'static str, colors: SemanticColors) -> AnyElement
         .into_any_element()
 }
 
-fn account_section_label(label: &'static str, colors: SemanticColors) -> AnyElement {
-    div()
-        .px(px(14.0))
-        .pt(px(6.0))
-        .pb(px(2.0))
-        .text_size(px(Typo::SECTION_HEADER.size))
-        .font_weight(Typo::SECTION_HEADER.weight)
-        .text_color(colors.tertiary)
-        .child(label)
-        .into_any_element()
-}
-
-fn account_usage_row(label: &str, detail: &str, value: &str, colors: SemanticColors) -> AnyElement {
-    div()
-        .px(px(14.0))
-        .h(px(Metrics::MENU_ROW_HEIGHT))
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .text_size(px(Typo::ROW.size))
-        .text_color(colors.text(zeus_ui::TextTone::Label))
-        .child(label.to_owned())
-        .child(div().flex_1())
-        .when(!detail.is_empty(), |row| {
-            row.child(
-                div()
-                    .text_size(px(Typo::META.size))
-                    .text_color(colors.tertiary)
-                    .child(detail.to_owned()),
-            )
-        })
-        .child(
-            div()
-                .font_family(crate::fonts::mono_family())
-                .text_size(px(Typo::META_MONO.size))
-                .text_color(colors.secondary)
-                .child(value.to_owned()),
-        )
-        .into_any_element()
-}
-
-fn compact_duration(seconds: i64) -> String {
-    let minutes = (seconds / 60).max(0);
-    if minutes >= 60 {
-        format!("{}h {}m", minutes / 60, minutes % 60)
-    } else {
-        format!("{minutes}m")
-    }
-}
-
 fn detail_row(
     label: &'static str,
     value: String,
@@ -4637,7 +4569,7 @@ fn detail_row(
     colors: SemanticColors,
 ) -> AnyElement {
     div()
-        .h(px(32.0))
+        .h(px(28.0))
         .px(px(2.0))
         .flex()
         .items_center()
@@ -4682,7 +4614,7 @@ fn copy_detail_row(
     div()
         .id(selector)
         .debug_selector(move || selector.to_owned())
-        .h(px(32.0))
+        .h(px(28.0))
         .px(px(2.0))
         .flex()
         .items_center()
@@ -7057,11 +6989,227 @@ mod tests {
         }
     }
 
+    fn dynamic_panel_test_runtime() -> Arc<StoreRuntime> {
+        let runtime = Arc::new(StoreRuntime::inert());
+        let fixture = SidebarPreviewFixture::make(PreviewScenario::Typical);
+        let mut store = runtime.store.write().unwrap();
+        store.hydrate(fixture.list);
+        store.select(fixture.selected_session_id.unwrap());
+        drop(store);
+        runtime
+    }
+
+    fn dynamic_panel_test_tokio() -> Arc<tokio::runtime::Runtime> {
+        Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        )
+    }
+
+    #[gpui::test]
+    fn dynamic_terminal_tabs_keep_distinct_sessions_and_closed_all_layout(cx: &mut TestAppContext) {
+        let runtime = dynamic_panel_test_runtime();
+        let main_session = runtime
+            .store
+            .read()
+            .unwrap()
+            .selected_session_id()
+            .cloned()
+            .unwrap();
+        let workspace = runtime
+            .store
+            .read()
+            .unwrap()
+            .active_workspace_id()
+            .cloned()
+            .unwrap();
+        let view_runtime = Arc::clone(&runtime);
+        let (harness, cx) = cx.add_window_view(move |_, cx| {
+            let inspector = cx.new(|cx| {
+                let mut inspector =
+                    WorkbenchInspector::new(view_runtime, dynamic_panel_test_tokio(), cx);
+                inspector.set_preview(true);
+                inspector.set_visible(true, cx);
+                inspector
+            });
+            InspectorHarness { inspector }
+        });
+        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        for _ in 0..2 {
+            let add = cx.debug_bounds("PANEL_ADD_TAB").unwrap();
+            cx.simulate_click(add.center(), Modifiers::none());
+            let terminal = cx.debug_bounds("PANEL_OPEN_TERMINAL").unwrap();
+            cx.simulate_click(terminal.center(), Modifiers::none());
+            assert!(cx.debug_bounds("PANEL_TERMINAL").is_some());
+        }
+        let terminals = inspector.read_with(cx, |inspector, cx| {
+            inspector
+                .panel_tabs
+                .tabs
+                .iter()
+                .filter(|tab| tab.kind == PanelTabKind::Terminal)
+                .map(|tab| {
+                    let entity = &inspector.panel_terminals[&(Some(workspace.clone()), tab.id)];
+                    let session = entity.read(cx).session_id().cloned().unwrap();
+                    (tab.id, entity.entity_id(), session)
+                })
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(terminals.len(), 2);
+        assert_ne!(terminals[0].0, terminals[1].0);
+        assert_ne!(terminals[0].1, terminals[1].1);
+        assert_ne!(terminals[0].2, terminals[1].2);
+        cx.run_until_parked();
+        {
+            let store = runtime.store.read().unwrap();
+            assert_eq!(store.selected_session_id(), Some(&main_session));
+            for (tab_id, _, session) in &terminals {
+                assert!(store.sessions().contains_key(session));
+                let saved = store.preferences().workspace_panel_tabs[&workspace]
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.id == *tab_id)
+                    .unwrap();
+                assert_eq!(saved.session_id.as_ref(), Some(session));
+            }
+        }
+        let ids = inspector.read_with(cx, |inspector, _| {
+            inspector
+                .panel_tabs
+                .tabs
+                .iter()
+                .map(|tab| tab.id)
+                .collect::<Vec<_>>()
+        });
+        for id in ids {
+            inspector.update(cx, |inspector, cx| inspector.close_panel_tab(id, cx));
+        }
+        assert!(cx.debug_bounds("PANEL_ADD_TAB").is_some());
+        assert!(cx.debug_bounds("PANEL_COLLAPSE").is_some());
+        assert!(cx.debug_bounds("PANEL_TERMINAL").is_none());
+        assert!(inspector.read_with(cx, |inspector, _| inspector.panel_tabs.tabs.is_empty()));
+        {
+            let store = runtime.store.read().unwrap();
+            let saved = &store.preferences().workspace_panel_tabs[&workspace];
+            assert!(saved.tabs.is_empty());
+            assert_eq!(saved.active, None);
+            for (_, _, session) in &terminals {
+                assert!(
+                    store.sessions().contains_key(session),
+                    "closing a panel tab preserves its shell session"
+                );
+            }
+        }
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        assert!(inspector.read_with(cx, |inspector, _| inspector.panel_tabs.tabs.is_empty()));
+        let add = cx.debug_bounds("PANEL_ADD_TAB").unwrap();
+        cx.simulate_click(add.center(), Modifiers::none());
+        let details = cx.debug_bounds("PANEL_OPEN_DETAILS").unwrap();
+        cx.simulate_click(details.center(), Modifiers::none());
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector
+                .panel_tabs
+                .active_tab()
+                .unwrap()
+                .kind),
+            PanelTabKind::Details
+        );
+    }
+
+    #[gpui::test]
+    fn named_file_tab_retains_its_editor_entity_when_switching_views(cx: &mut TestAppContext) {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("LICENSE"), "Copyright Zeus\n").unwrap();
+        let runtime = dynamic_panel_test_runtime();
+        let workspace = runtime
+            .store
+            .read()
+            .unwrap()
+            .active_workspace_id()
+            .cloned()
+            .unwrap();
+        let view_runtime = Arc::clone(&runtime);
+        let (harness, cx) = cx.add_window_view(move |_, cx| {
+            let inspector = cx.new(|cx| {
+                let mut inspector =
+                    WorkbenchInspector::new(view_runtime, dynamic_panel_test_tokio(), cx);
+                inspector.set_preview(true);
+                inspector.set_visible(true, cx);
+                inspector
+            });
+            InspectorHarness { inspector }
+        });
+        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        let details_id =
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.active.unwrap());
+        inspector.update(cx, |inspector, cx| {
+            inspector.open_file_reference(directory.path(), "LICENSE", cx)
+        });
+        let file_id = inspector.read_with(cx, |inspector, _| {
+            let tab = inspector.panel_tabs.active_tab().unwrap();
+            assert_eq!(tab.kind, PanelTabKind::File);
+            assert_eq!(tab.label(), "LICENSE");
+            assert_eq!(tab.file.as_ref().unwrap().cwd, directory.path());
+            tab.id
+        });
+        assert_eq!(details_id, 1);
+        assert_eq!(file_id, 2);
+        assert!(cx.debug_bounds("PANEL_TAB_2").is_some());
+        let editor = inspector.read_with(cx, |inspector, _| {
+            inspector.panel_files[&(Some(workspace.clone()), file_id)].clone()
+        });
+        let details = cx.debug_bounds("PANEL_TAB_1").unwrap();
+        cx.simulate_click(details.center(), Modifiers::none());
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.active),
+            Some(details_id)
+        );
+        let file = cx.debug_bounds("PANEL_TAB_2").unwrap();
+        cx.simulate_click(file.center(), Modifiers::none());
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.active),
+            Some(file_id)
+        );
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_files
+                [&(Some(workspace.clone()), file_id)]
+                .entity_id()),
+            editor.entity_id()
+        );
+        // Reopening the same file focuses its tab instead of replacing the editor.
+        inspector.update(cx, |inspector, cx| {
+            inspector.open_file_reference(directory.path(), "LICENSE", cx)
+        });
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.tabs.len()),
+            2
+        );
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_files
+                [&(Some(workspace.clone()), file_id)]
+                .entity_id()),
+            editor.entity_id()
+        );
+        let store = runtime.store.read().unwrap();
+        let saved = &store.preferences().workspace_panel_tabs[&workspace];
+        assert_eq!(saved.active, Some(file_id));
+        assert_eq!(saved.active_tab().unwrap().title, "LICENSE");
+    }
+
     #[test]
-    fn inspector_tabs_have_stable_spatial_order() {
-        assert!(InspectorTab::Info.index() < InspectorTab::Changes.index());
-        assert!(InspectorTab::Changes.index() < InspectorTab::Code.index());
-        assert!(InspectorTab::Code.index() < InspectorTab::Artifacts.index());
+    fn legacy_inspector_views_migrate_to_one_dynamic_panel_tab() {
+        for (legacy, expected) in [
+            (InspectorTab::Info, PanelTabKind::Details),
+            (InspectorTab::Changes, PanelTabKind::Review),
+            (InspectorTab::Code, PanelTabKind::Files),
+            (InspectorTab::Artifacts, PanelTabKind::Details),
+        ] {
+            let tabs = PanelTabs::new(panel_kind_for_inspector(legacy));
+            assert_eq!(tabs.tabs.len(), 1);
+            assert_eq!(tabs.active_tab().unwrap().kind, expected);
+        }
     }
 
     #[test]
@@ -7232,12 +7380,6 @@ mod tests {
     }
 
     #[test]
-    fn compact_duration_matches_account_usage_copy() {
-        assert_eq!(compact_duration(8_040), "2h 14m");
-        assert_eq!(compact_duration(540), "9m");
-    }
-
-    #[test]
     fn wrapped_diff_rows_preserve_logical_rows_and_text() {
         let snapshot = DiffSnapshot {
             rows: vec![
@@ -7272,36 +7414,6 @@ mod tests {
                 1
             );
         }
-    }
-
-    #[gpui::test]
-    fn account_avatar_opens_the_account_menu(cx: &mut TestAppContext) {
-        let runtime = Arc::new(StoreRuntime::inert());
-        let tokio = Arc::new(
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("test runtime"),
-        );
-        let inspector_runtime = Arc::clone(&runtime);
-        let (harness, cx) = cx.add_window_view(move |_window, cx| {
-            let inspector = cx.new(|cx| {
-                let mut inspector = WorkbenchInspector::new(inspector_runtime, tokio, cx);
-                inspector.set_preview_account(true);
-                inspector
-            });
-            InspectorHarness { inspector }
-        });
-
-        let avatar = cx
-            .debug_bounds("INSPECTOR_ACCOUNT_AVATAR")
-            .expect("account avatar");
-        cx.simulate_click(avatar.center(), Modifiers::none());
-
-        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
-        assert!(inspector.read_with(cx, |inspector, _| inspector.account_open));
-        assert!(cx.debug_bounds("INSPECTOR_ADD_REMOTE_HOST").is_some());
-        assert!(cx.debug_bounds("INSPECTOR_OPEN_SETTINGS").is_some());
     }
 
     #[test]
@@ -7341,7 +7453,7 @@ mod tests {
         let (harness, cx) = cx.add_window_view(move |_window, cx| {
             let inspector = cx.new(|cx| {
                 let mut inspector = WorkbenchInspector::new(inspector_runtime, tokio, cx);
-                inspector.set_preview_account(true);
+                inspector.set_preview(true);
                 inspector.select_tab(InspectorTab::Changes, cx);
                 inspector.set_visible(true, cx);
                 inspector
@@ -7351,6 +7463,218 @@ mod tests {
         let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
 
         assert!(inspector.read_with(cx, |inspector, _| inspector.poll_task.is_none()));
+    }
+
+    #[gpui::test]
+    fn workspace_tabs_restore_persisted_dynamic_panels_while_hidden_and_visible(
+        cx: &mut TestAppContext,
+    ) {
+        let runtime = Arc::new(StoreRuntime::inert());
+        let fixture = SidebarPreviewFixture::make(PreviewScenario::Typical);
+        let first = fixture.list.projects[0].id.clone();
+        let second = fixture.list.projects[1].id.clone();
+        let mut first_tabs = PanelTabs::new(PanelTabKind::Details);
+        let files = first_tabs.open(PanelTabKind::Files).unwrap();
+        let mut second_tabs = PanelTabs::new(PanelTabKind::Details);
+        second_tabs.open(PanelTabKind::Review);
+        second_tabs.select(1);
+        {
+            let mut store = runtime.store.write().expect("session store lock poisoned");
+            store.hydrate(fixture.list);
+            store.set_active_workspace(first.clone());
+            store
+                .update_preferences(|prefs| {
+                    prefs
+                        .workspace_panel_tabs
+                        .insert(first.clone(), first_tabs.clone());
+                    prefs
+                        .workspace_panel_tabs
+                        .insert(second.clone(), second_tabs.clone());
+                })
+                .unwrap();
+        }
+        let tokio = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+        let inspector_runtime = Arc::clone(&runtime);
+        let (harness, cx) = cx.add_window_view(move |_, cx| {
+            let inspector = cx.new(|cx| {
+                let mut inspector = WorkbenchInspector::new(inspector_runtime, tokio, cx);
+                inspector.set_preview(true);
+                inspector
+            });
+            InspectorHarness { inspector }
+        });
+        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        inspector.read_with(cx, |inspector, _| {
+            assert_eq!(inspector.panel_tabs, first_tabs);
+            assert_eq!(inspector.panel_tabs.active, Some(files));
+            assert!(inspector.is_code_destination());
+        });
+        runtime
+            .store
+            .write()
+            .unwrap()
+            .set_active_workspace(second.clone());
+        inspector.update(cx, |inspector, cx| inspector.refresh_if_context_changed(cx));
+        inspector.read_with(cx, |inspector, _| {
+            assert_eq!(inspector.panel_tabs, second_tabs);
+            assert_eq!(inspector.selected_tab, InspectorTab::Info);
+            assert!(inspector.context.is_none());
+            assert!(inspector.refresh_task.is_none());
+            assert!(inspector.review_task.is_none());
+            assert!(inspector.poll_task.is_none());
+        });
+        runtime
+            .store
+            .write()
+            .unwrap()
+            .set_active_workspace(first.clone());
+        inspector.update(cx, |inspector, cx| {
+            inspector.sync_workspace_tab(cx);
+            assert_eq!(inspector.panel_tabs, first_tabs);
+            inspector.set_visible(true, cx);
+            inspector.open_panel_tab(PanelTabKind::Review, cx);
+        });
+        let remembered = inspector.read_with(cx, |inspector, _| inspector.panel_tabs.clone());
+        assert_eq!(remembered.tabs.len(), 3);
+        assert_eq!(remembered.active_tab().unwrap().kind, PanelTabKind::Review);
+        assert_eq!(
+            runtime
+                .store
+                .read()
+                .unwrap()
+                .preferences()
+                .workspace_panel_tabs[&first],
+            remembered
+        );
+        let second_session = {
+            let mut store = runtime.store.write().unwrap();
+            store.set_active_workspace(second.clone());
+            store.selected_session_id().cloned().unwrap()
+        };
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        inspector.read_with(cx, |inspector, _| {
+            assert_eq!(inspector.panel_tabs, second_tabs);
+            assert_eq!(
+                inspector.context.as_ref().map(|context| &context.id),
+                Some(&second_session)
+            );
+            assert!(inspector.poll_task.is_none());
+        });
+        runtime.store.write().unwrap().set_active_workspace(first);
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.clone()),
+            remembered
+        );
+    }
+
+    #[gpui::test]
+    fn code_to_code_workspace_switch_refreshes_before_the_next_frame(cx: &mut TestAppContext) {
+        let runtime = Arc::new(StoreRuntime::inert());
+        let fixture = SidebarPreviewFixture::make(PreviewScenario::Typical);
+        let first = fixture.list.projects[0].id.clone();
+        let second = fixture.list.projects[1].id.clone();
+        {
+            let mut store = runtime.store.write().expect("session store lock poisoned");
+            store.hydrate(fixture.list);
+            for workspace in [&second, &first] {
+                assert!(store.set_active_workspace(workspace.clone()));
+                store
+                    .update_preferences(|prefs| {
+                        prefs.inspector_tab = InspectorTab::Code;
+                        prefs
+                            .workspace_panel_tabs
+                            .insert(workspace.clone(), PanelTabs::new(PanelTabKind::Files));
+                    })
+                    .expect("test inspector preference");
+            }
+        }
+        let tokio = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime"),
+        );
+        let inspector_runtime = Arc::clone(&runtime);
+        let (harness, cx) = cx.add_window_view(move |_window, cx| {
+            let inspector = cx.new(|cx| {
+                let mut inspector = WorkbenchInspector::new(inspector_runtime, tokio, cx);
+                inspector.set_preview(true);
+                inspector.set_visible(true, cx);
+                inspector
+            });
+            InspectorHarness { inspector }
+        });
+        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        let first_context = inspector.read_with(cx, |inspector, _| inspector.context.clone());
+        inspector.update(cx, |inspector, _| {
+            inspector.discard_armed = true;
+            inspector.commit_open = true;
+            inspector
+                .commit_query
+                .insert("Commit for the first workspace");
+        });
+        let second_session = {
+            let mut store = runtime.store.write().expect("session store lock poisoned");
+            assert!(store.set_active_workspace(second));
+            assert_eq!(store.preferences().inspector_tab, InspectorTab::Code);
+            store
+                .selected_session_id()
+                .cloned()
+                .expect("second workspace session")
+        };
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        inspector.read_with(cx, |inspector, _| {
+            assert_eq!(inspector.selected_tab, InspectorTab::Code);
+            assert_eq!(
+                inspector.context.as_ref().map(|context| &context.id),
+                Some(&second_session)
+            );
+            assert_ne!(inspector.context, first_context);
+            assert!(!inspector.discard_armed);
+            assert!(!inspector.commit_open);
+            assert!(inspector.commit_query.is_empty());
+        });
+
+        inspector.update(cx, |inspector, _| {
+            inspector.discard_armed = true;
+            inspector.commit_open = true;
+            inspector
+                .commit_query
+                .insert("Commit for the second workspace");
+        });
+        {
+            let mut store = runtime.store.write().expect("session store lock poisoned");
+            let tabs: Vec<_> = store
+                .workspace_tabs()
+                .into_iter()
+                .map(|project| project.id)
+                .collect();
+            for workspace in tabs {
+                assert!(store.close_workspace_tab(&workspace));
+            }
+        }
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        let cleared_generation = inspector.read_with(cx, |inspector, _| {
+            assert!(inspector.context.is_none());
+            assert_eq!(inspector.state, LoadState::NoSession);
+            assert!(!inspector.discard_armed);
+            assert!(!inspector.commit_open);
+            assert!(inspector.commit_query.is_empty());
+            inspector.review_generation
+        });
+        inspector.update(cx, |inspector, cx| inspector.sync_workspace_tab(cx));
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.review_generation),
+            cleared_generation,
+            "a settled empty destination must not refresh on every root render"
+        );
+        cx.run_until_parked();
     }
 
     /// The Info tab renders the Git summary, so it must be refreshed when it
@@ -7448,7 +7772,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn info_renders_the_briefing_without_pr_content(cx: &mut TestAppContext) {
+    fn details_renders_the_briefing_and_pull_request_artifacts(cx: &mut TestAppContext) {
         let runtime = Arc::new(StoreRuntime::inert());
         let mut fixture = SidebarPreviewFixture::make(PreviewScenario::Artifacts);
         let selected = fixture
@@ -7528,8 +7852,8 @@ mod tests {
             assert!(cx.debug_bounds(selector).is_some(), "missing {selector}");
         }
         assert!(
-            cx.debug_bounds("INSPECTOR_PR_OPEN").is_none(),
-            "Info must not render pull-request content"
+            cx.debug_bounds("INSPECTOR_PR_OPEN").is_some(),
+            "Details includes the active session's pull-request artifacts"
         );
         for (selector, maximum_height) in [
             ("INFO_HERO", 72.0),
@@ -7608,7 +7932,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn tabs_fit_and_switch_at_the_minimum_inspector_width(cx: &mut TestAppContext) {
+    fn dynamic_tabs_fit_and_details_include_artifacts_at_minimum_width(cx: &mut TestAppContext) {
         let runtime = Arc::new(StoreRuntime::inert());
         let mut fixture = SidebarPreviewFixture::make(PreviewScenario::Artifacts);
         let selected = fixture.selected_session_id.clone();
@@ -7655,85 +7979,125 @@ mod tests {
             });
             InspectorHarness { inspector }
         });
+        // Width is the constraint under test. Keep the merged Details card
+        // tall enough for its lower artifact actions to receive real clicks.
+        cx.simulate_resize(gpui::size(px(min_width()), px(1600.0)));
         cx.run_until_parked();
 
-        assert!(
-            cx.debug_bounds("INSPECTOR_TRAFFIC_LIGHT_LANE").is_none(),
-            "the trailing inspector must not reserve the leading window-button lane"
-        );
-        let info = cx.debug_bounds("INSPECTOR_TAB_INFO").expect("Info tab");
-        let changes = cx
-            .debug_bounds("INSPECTOR_TAB_CHANGES")
-            .expect("Changes tab");
-        let code = cx.debug_bounds("INSPECTOR_TAB_CODE").expect("Code tab");
-        let artifacts = cx
-            .debug_bounds("INSPECTOR_TAB_ARTIFACTS")
-            .expect("Artifacts tab");
-        let toggle = cx
-            .debug_bounds("INSPECTOR_TOGGLE")
-            .expect("inspector toggle");
-        let avatar = cx
-            .debug_bounds("INSPECTOR_ACCOUNT_AVATAR")
-            .expect("account avatar");
-
-        assert!(toggle.right() <= info.left());
-        assert!(info.right() <= changes.left());
-        assert!(changes.right() <= code.left());
-        assert!(code.right() <= artifacts.left());
-        assert!(artifacts.right() <= avatar.left());
-        assert_eq!(
-            avatar.left() - artifacts.right(),
-            px(Metrics::TOOLBAR_COMPACT_GAP),
-            "the account avatar should sit directly after the right-aligned tabs"
-        );
-        assert!(avatar.right() <= px(min_width()));
-
-        cx.simulate_click(changes.center(), Modifiers::none());
+        let header = cx.debug_bounds("PANEL_HEADER").expect("panel header");
+        let strip = cx.debug_bounds("PANEL_TAB_STRIP").expect("tab strip");
+        let add = cx.debug_bounds("PANEL_ADD_TAB").expect("add control");
+        let toggle = cx.debug_bounds("PANEL_COLLAPSE").expect("panel toggle");
+        assert_eq!(header.size.height, px(Metrics::TITLE_BAR));
+        assert_eq!(strip.left(), px(8.0));
+        assert!(strip.right() <= add.left());
+        assert!(add.right() <= toggle.left());
+        assert!(toggle.right() <= px(min_width()));
+        assert!(cx.debug_bounds("INSPECTOR_ACCOUNT_AVATAR").is_none());
         let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        let details = inspector.read_with(cx, |inspector, _| inspector.panel_tabs.active.unwrap());
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector.panel_tabs.tabs.len()),
+            1
+        );
+
+        cx.simulate_click(add.center(), Modifiers::none());
+        let review = cx
+            .debug_bounds("PANEL_OPEN_REVIEW")
+            .expect("Review menu choice");
+        cx.simulate_click(review.center(), Modifiers::none());
         assert_eq!(
             inspector.read_with(cx, |inspector, _| inspector.selected_tab),
             InspectorTab::Changes
         );
-        cx.run_until_parked();
-
         let working = cx
             .debug_bounds("INSPECTOR_LAYER_WORKING")
             .expect("working-tree layer");
-        assert_eq!(
-            inspector.read_with(cx, |inspector, _| inspector.diff_layer),
-            DiffLayer::Branch
-        );
         cx.simulate_click(working.center(), Modifiers::none());
-        cx.run_until_parked();
         assert_eq!(
             inspector.read_with(cx, |inspector, _| inspector.diff_layer),
             DiffLayer::Working
         );
 
-        cx.simulate_click(artifacts.center(), Modifiers::none());
+        assert_eq!(details, 1);
+        let details_tab = cx.debug_bounds("PANEL_TAB_1").expect("Details tab");
+        cx.simulate_click(details_tab.center(), Modifiers::none());
         assert_eq!(
             inspector.read_with(cx, |inspector, _| inspector.selected_tab),
-            InspectorTab::Artifacts
+            InspectorTab::Info
         );
         assert_eq!(
-            runtime
-                .store
-                .read()
-                .expect("session store lock poisoned")
-                .preferences()
-                .inspector_tab,
-            InspectorTab::Artifacts
+            runtime.store.read().unwrap().preferences().inspector_tab,
+            InspectorTab::Info
         );
-
-        cx.run_until_parked();
         assert!(cx.debug_bounds("INSPECTOR_PR_MERGE").is_some());
         assert!(cx.debug_bounds("INSPECTOR_PR_CHECK_0").is_some());
         assert!(cx.debug_bounds("INSPECTOR_PR_COMMENT_0").is_some());
         let ask = cx.debug_bounds("INSPECTOR_PR_ASK").expect("PR ask action");
         cx.simulate_click(ask.center(), Modifiers::none());
-        cx.run_until_parked();
         assert!(cx.debug_bounds("INSPECTOR_ASK_COMPOSER").is_some());
         assert!(cx.debug_bounds("INSPECTOR_ASK_SEND").is_some());
+    }
+
+    #[gpui::test]
+    fn mirrored_dynamic_header_reserves_native_window_buttons_and_navigates_tabs(
+        cx: &mut TestAppContext,
+    ) {
+        let runtime = Arc::new(StoreRuntime::inert());
+        runtime
+            .store
+            .write()
+            .unwrap()
+            .update_preferences(|prefs| prefs.sidebar_on_right = true)
+            .unwrap();
+        let tokio = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+        let (harness, cx) = cx.add_window_view(move |_, cx| {
+            let inspector = cx.new(|cx| {
+                let mut inspector = WorkbenchInspector::new(runtime, tokio, cx);
+                inspector.set_preview(true);
+                inspector.open_panel_tab(PanelTabKind::Review, cx);
+                inspector.open_panel_tab(PanelTabKind::Files, cx);
+                inspector.select_panel_tab(1, cx);
+                inspector
+            });
+            InspectorHarness { inspector }
+        });
+        let strip = cx.debug_bounds("PANEL_TAB_STRIP").expect("tab strip");
+        let add = cx.debug_bounds("PANEL_ADD_TAB").expect("add control");
+        let toggle = cx.debug_bounds("PANEL_COLLAPSE").expect("panel toggle");
+        assert_eq!(strip.left(), px(82.0));
+        assert!(strip.right() <= add.left());
+        assert!(toggle.right() <= px(min_width()));
+        assert!(cx.debug_bounds("INSPECTOR_ACCOUNT_AVATAR").is_none());
+        let inspector = harness.read_with(cx, |harness, _| harness.inspector.clone());
+        let panel_header = inspector.read_with(cx, |inspector, _| inspector.panel_header.clone());
+        cx.update(|window, cx| panel_header.update(cx, |header, cx| header.focus(window, cx)));
+        cx.simulate_keystrokes("right right");
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector
+                .panel_tabs
+                .active_tab()
+                .unwrap()
+                .kind),
+            PanelTabKind::Files
+        );
+        // Root's body-focus routing is absent in this harness; focus the header
+        // explicitly before the next independent navigation gesture.
+        cx.update(|window, cx| panel_header.update(cx, |header, cx| header.focus(window, cx)));
+        cx.simulate_keystrokes("end right");
+        assert_eq!(
+            inspector.read_with(cx, |inspector, _| inspector
+                .panel_tabs
+                .active_tab()
+                .unwrap()
+                .kind),
+            PanelTabKind::Details
+        );
     }
 
     #[test]

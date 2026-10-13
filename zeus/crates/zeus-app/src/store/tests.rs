@@ -256,6 +256,676 @@ fn selecting_a_session_also_activates_its_workspace() {
     assert_eq!(store.preferences().last_active_workspace, Some(pid("b")));
 }
 
+fn tab_ids(store: &SessionStore) -> Vec<ProjectId> {
+    store
+        .workspace_tabs()
+        .into_iter()
+        .map(|project| project.id)
+        .collect()
+}
+
+#[test]
+fn legacy_preferences_open_only_the_restored_workspace() {
+    let prefs = Prefs {
+        last_active_workspace: Some(pid("b")),
+        inspector_tab: InspectorTab::Changes,
+        ..Prefs::default()
+    };
+    let (store, _) = hydrated(
+        vec![session("a-one", "a", 1.0), session("b-one", "b", 2.0)],
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        prefs,
+    );
+
+    assert_eq!(tab_ids(&store), vec![pid("b")]);
+    assert_eq!(store.preferences().workspace_tabs, Some(vec![pid("b")]));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Changes);
+    assert_eq!(
+        store.preferences().workspace_sessions.get(&pid("b")),
+        Some(&id("b-one"))
+    );
+}
+
+#[test]
+fn current_tabs_preserve_a_restored_global_inspector_choice_without_a_workspace_map() {
+    let prefs = Prefs {
+        workspace_tabs: Some(vec![pid("a"), pid("b")]),
+        last_active_workspace: Some(pid("b")),
+        inspector_tab: InspectorTab::Artifacts,
+        ..Prefs::default()
+    };
+    let (mut store, _) = hydrated(
+        Vec::new(),
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        prefs,
+    );
+
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Artifacts);
+    assert_eq!(
+        store.preferences().workspace_inspector_tabs.get(&pid("b")),
+        Some(&InspectorTab::Artifacts)
+    );
+    store.set_active_workspace(pid("a"));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Info);
+    store.set_active_workspace(pid("b"));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Artifacts);
+}
+
+#[test]
+fn opening_tabs_preserves_order_and_focus_without_duplicates() {
+    let (mut store, _) = hydrated(
+        Vec::new(),
+        vec![
+            project("a", "Alpha"),
+            project("b", "Beta"),
+            project("c", "Gamma"),
+        ],
+        Prefs::default(),
+    );
+
+    assert!(store.open_workspace_tab(pid("c")));
+    assert!(store.open_workspace_tab(pid("b")));
+    assert!(store.open_workspace_tab(pid("a")));
+    assert!(store.open_workspace_tab(pid("c")));
+    assert!(!store.open_workspace_tab(pid("missing")));
+    assert_eq!(tab_ids(&store), vec![pid("a"), pid("c"), pid("b")]);
+    assert_eq!(store.active_workspace_id(), Some(&pid("c")));
+    assert_eq!(store.projects().len(), 3);
+}
+
+#[test]
+fn equal_paths_on_different_hosts_are_distinct_workspace_tabs() {
+    let mut first = session("host-a", "project-host-a", 1.0);
+    first.cwd = "/work/shared".into();
+    first.host = Some("host-a".into());
+    let mut second = session("host-b", "project-host-b", 2.0);
+    second.cwd = first.cwd.clone();
+    second.host = Some("host-b".into());
+    let (mut store, _) = hydrated(vec![first, second], Vec::new(), Prefs::default());
+
+    store.open_workspace_tab(pid("project-host-b"));
+
+    let tabs = store.workspace_tabs();
+    assert_eq!(tabs.len(), 2);
+    assert_ne!(tabs[0].id, tabs[1].id);
+    assert_eq!(tabs[0].root, tabs[1].root);
+    assert_eq!(store.selected_session_id(), Some(&id("host-b")));
+}
+
+#[test]
+fn adding_a_local_folder_does_not_focus_a_remote_workspace_with_the_same_path() {
+    let mut remote = session("remote", "remote-project", 1.0);
+    remote.cwd = "/work/shared".into();
+    remote.host = Some("host-a".into());
+    let mut remote_project = project("remote-project", "Shared");
+    remote_project.root = remote.cwd.clone();
+    let (mut store, mut effects) = hydrated(vec![remote], vec![remote_project], Prefs::default());
+    drain(&mut effects);
+
+    assert!(store.add_project("/work/shared".into()));
+
+    assert_eq!(
+        drain(&mut effects),
+        vec![StoreEffect::AddProject {
+            root: "/work/shared".into()
+        }]
+    );
+}
+
+#[test]
+fn closing_an_inactive_tab_preserves_projects_sessions_and_current_attachment() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("a-one", "a", 1.0), session("b-one", "b", 2.0)],
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        Prefs::default(),
+    );
+    store.open_workspace_tab(pid("b"));
+    drain(&mut effects);
+
+    assert!(store.close_workspace_tab(&pid("a")));
+    assert!(!store.close_workspace_tab(&pid("a")));
+
+    assert_eq!(tab_ids(&store), vec![pid("b")]);
+    assert_eq!(store.active_workspace_id(), Some(&pid("b")));
+    assert_eq!(store.selected_session_id(), Some(&id("b-one")));
+    assert!(store.terminal_residency().contains(&id("b-one")));
+    assert_eq!(store.projects().len(), 2);
+    assert_eq!(store.sessions().len(), 2);
+    assert!(store.pending_close().is_none());
+    assert_eq!(drain(&mut effects), vec![StoreEffect::UiChanged]);
+}
+
+#[test]
+fn closing_an_active_tab_selects_its_right_then_left_neighbor() {
+    let (mut store, _) = hydrated(
+        Vec::new(),
+        vec![
+            project("a", "Alpha"),
+            project("b", "Beta"),
+            project("c", "Gamma"),
+        ],
+        Prefs::default(),
+    );
+    store.open_workspace_tab(pid("b"));
+    store.open_workspace_tab(pid("c"));
+    store.set_active_workspace(pid("b"));
+
+    assert!(store.close_active_workspace_tab());
+    assert_eq!(store.active_workspace_id(), Some(&pid("c")));
+    assert!(store.close_active_workspace_tab());
+    assert_eq!(store.active_workspace_id(), Some(&pid("a")));
+}
+
+#[test]
+fn closing_the_final_tab_detaches_without_stopping_or_archiving_sessions() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "a", 1.0)],
+        vec![project("a", "Alpha")],
+        Prefs::default(),
+    );
+    drain(&mut effects);
+
+    assert!(store.close_active_workspace_tab());
+
+    assert_eq!(store.active_workspace_id(), None);
+    assert_eq!(store.selected_session_id(), None);
+    assert_eq!(store.preferences().workspace_tabs, Some(Vec::new()));
+    assert_eq!(store.preferences().last_selected_session, None);
+    assert_eq!(
+        store.preferences().workspace_sessions.get(&pid("a")),
+        Some(&id("one"))
+    );
+    assert!(store.terminal_residency().resident().next().is_none());
+    assert_eq!(
+        store.sessions().get(&id("one")).unwrap().status,
+        SessionStatus::Idle
+    );
+    assert!(!store.sessions().get(&id("one")).unwrap().is_archived());
+    assert!(store.projects().contains_key(&pid("a")));
+    assert_eq!(
+        drain(&mut effects),
+        vec![
+            StoreEffect::DetachAttachment(id("one")),
+            StoreEffect::UiChanged
+        ]
+    );
+    assert!(!store.close_active_workspace_tab());
+    assert!(!store.select_relative_workspace_tab(1));
+}
+
+#[test]
+fn closed_all_tabs_survive_hydration_and_new_session_events_until_explicit_selection() {
+    let records = vec![session("one", "a", 1.0)];
+    let projects = vec![project("a", "Alpha")];
+    let (mut store, _) = hydrated(records.clone(), projects.clone(), Prefs::default());
+    store.close_active_workspace_tab();
+
+    store.hydrate(SessionListResult {
+        sessions: records,
+        projects,
+    });
+    store.upsert_session(session("two", "a", 2.0));
+    store.upsert_session(session("one", "elsewhere", 1.0));
+
+    assert!(store.workspace_tabs().is_empty());
+    assert_eq!(store.active_workspace_id(), None);
+    assert_eq!(store.selected_session_id(), None);
+    store.select(id("two"));
+    assert_eq!(tab_ids(&store), vec![pid("a")]);
+    assert_eq!(store.selected_session_id(), Some(&id("two")));
+}
+
+#[test]
+fn switching_to_an_empty_workspace_detaches_the_previous_terminal() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "a", 1.0)],
+        vec![project("a", "Alpha"), project("empty", "Empty")],
+        Prefs::default(),
+    );
+    drain(&mut effects);
+
+    store.open_workspace_tab(pid("empty"));
+
+    assert_eq!(store.selected_session_id(), None);
+    assert_eq!(store.active_workspace_id(), Some(&pid("empty")));
+    assert!(store.terminal_residency().resident().next().is_none());
+    assert!(drain(&mut effects).contains(&StoreEffect::DetachAttachment(id("one"))));
+    store.set_active_workspace(pid("a"));
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+}
+
+#[test]
+fn workspace_switching_restores_session_and_inspector_with_one_attachment() {
+    let (mut store, mut effects) = hydrated(
+        vec![
+            session("a-one", "a", 1.0),
+            session("a-two", "a", 2.0),
+            session("b-one", "b", 3.0),
+        ],
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        Prefs::default(),
+    );
+    store.select(id("a-two"));
+    store
+        .update_preferences(|prefs| prefs.inspector_tab = InspectorTab::Changes)
+        .unwrap();
+    store.open_workspace_tab(pid("b"));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Info);
+    store
+        .update_preferences(|prefs| prefs.inspector_tab = InspectorTab::Artifacts)
+        .unwrap();
+    drain(&mut effects);
+
+    assert!(store.select_relative_workspace_tab(-1));
+    assert_eq!(store.active_workspace_id(), Some(&pid("a")));
+    assert_eq!(store.selected_session_id(), Some(&id("a-two")));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Changes);
+    assert_eq!(
+        store
+            .terminal_residency()
+            .resident()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![id("a-two")]
+    );
+    assert!(drain(&mut effects).contains(&StoreEffect::DetachAttachment(id("b-one"))));
+    assert!(store.select_relative_workspace_tab(-1));
+    assert_eq!(store.active_workspace_id(), Some(&pid("b")));
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Artifacts);
+    assert!(store.select_relative_workspace_tab(1));
+    assert_eq!(store.active_workspace_id(), Some(&pid("a")));
+}
+
+#[test]
+fn saved_tabs_drop_stale_ids_and_invalid_remembered_session_membership() {
+    let prefs = Prefs {
+        workspace_tabs: Some(vec![pid("b"), pid("missing"), pid("a"), pid("b")]),
+        last_active_workspace: Some(pid("missing")),
+        last_selected_session: Some(id("gone")),
+        workspace_sessions: [
+            (pid("a"), id("b-one")),
+            (pid("b"), id("gone")),
+            (pid("missing"), id("a-one")),
+        ]
+        .into_iter()
+        .collect(),
+        workspace_inspector_tabs: [(pid("missing"), InspectorTab::Changes)]
+            .into_iter()
+            .collect(),
+        ..Prefs::default()
+    };
+    let (store, _) = hydrated(
+        vec![session("a-one", "a", 1.0), session("b-one", "b", 2.0)],
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        prefs,
+    );
+
+    assert_eq!(tab_ids(&store), vec![pid("b"), pid("a")]);
+    assert_eq!(store.active_workspace_id(), Some(&pid("a")));
+    assert_eq!(store.selected_session_id(), Some(&id("a-one")));
+    assert_eq!(store.preferences().workspace_sessions.len(), 1);
+    assert_eq!(
+        store.preferences().workspace_sessions.get(&pid("a")),
+        Some(&id("a-one"))
+    );
+    assert!(
+        !store
+            .preferences()
+            .workspace_inspector_tabs
+            .contains_key(&pid("missing"))
+    );
+}
+
+#[test]
+fn unavailable_saved_tabs_do_not_reopen_other_known_workspaces() {
+    for tabs in [Vec::new(), vec![pid("removed")]] {
+        let prefs = Prefs {
+            workspace_tabs: Some(tabs),
+            last_active_workspace: Some(pid("removed")),
+            last_selected_session: Some(id("one")),
+            ..Prefs::default()
+        };
+        let (store, _) = hydrated(
+            vec![session("one", "a", 1.0)],
+            vec![project("a", "Alpha")],
+            prefs,
+        );
+
+        assert_eq!(store.preferences().workspace_tabs, Some(Vec::new()));
+        assert_eq!(store.active_workspace_id(), None);
+        assert_eq!(store.selected_session_id(), None);
+        assert!(store.terminal_residency().resident().next().is_none());
+    }
+}
+
+#[test]
+fn removing_the_final_session_prunes_its_synthesized_workspace_tab() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "synthetic", 1.0)],
+        Vec::new(),
+        Prefs::default(),
+    );
+    drain(&mut effects);
+
+    store.remove_session_record(&id("one"));
+
+    assert!(store.workspace_tabs().is_empty());
+    assert_eq!(store.active_workspace_id(), None);
+    assert_eq!(store.selected_session_id(), None);
+    assert!(store.preferences().workspace_sessions.is_empty());
+    assert!(drain(&mut effects).contains(&StoreEffect::DetachAttachment(id("one"))));
+}
+
+#[test]
+fn hydration_of_a_removed_active_workspace_selects_the_adjacent_open_tab() {
+    let prefs = Prefs {
+        workspace_tabs: Some(vec![pid("a"), pid("b"), pid("c")]),
+        last_active_workspace: Some(pid("b")),
+        last_selected_session: Some(id("b-one")),
+        ..Prefs::default()
+    };
+    let (mut store, mut effects) = hydrated(
+        vec![
+            session("a-one", "a", 1.0),
+            session("b-one", "b", 2.0),
+            session("c-one", "c", 3.0),
+        ],
+        vec![
+            project("a", "Alpha"),
+            project("b", "Beta"),
+            project("c", "Gamma"),
+        ],
+        prefs,
+    );
+    drain(&mut effects);
+
+    store.hydrate(SessionListResult {
+        sessions: vec![session("a-one", "a", 1.0), session("c-one", "c", 3.0)],
+        projects: vec![project("a", "Alpha"), project("c", "Gamma")],
+    });
+
+    assert_eq!(tab_ids(&store), vec![pid("a"), pid("c")]);
+    assert_eq!(store.active_workspace_id(), Some(&pid("c")));
+    assert_eq!(store.selected_session_id(), Some(&id("c-one")));
+    assert!(
+        !store
+            .preferences()
+            .workspace_sessions
+            .contains_key(&pid("b"))
+    );
+    assert_eq!(
+        store
+            .terminal_residency()
+            .resident()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![id("c-one")]
+    );
+    assert!(drain(&mut effects).contains(&StoreEffect::DetachAttachment(id("b-one"))));
+}
+
+#[test]
+fn authoritative_location_change_refocuses_the_selected_workspace_without_resuming() {
+    let prefs = Prefs {
+        workspace_inspector_tabs: [(pid("b"), InspectorTab::Artifacts)].into_iter().collect(),
+        ..Prefs::default()
+    };
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "a", 1.0)],
+        vec![project("a", "Alpha"), project("b", "Beta")],
+        prefs,
+    );
+    store
+        .update_preferences(|prefs| prefs.inspector_tab = InspectorTab::Changes)
+        .unwrap();
+    drain(&mut effects);
+    let mut moved = session("one", "b", 1.0);
+    moved.status = SessionStatus::Exited(ExitInfo {
+        reason: ExitReason::DaemonRestart,
+        code: None,
+        signal: None,
+    });
+    moved.resumability = Resumability::Resumable;
+    moved.host = Some("remote-b".into());
+
+    store.upsert_session(moved);
+
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+    assert_eq!(store.active_workspace_id(), Some(&pid("b")));
+    assert_eq!(tab_ids(&store), vec![pid("a"), pid("b")]);
+    assert_eq!(store.preferences().inspector_tab, InspectorTab::Artifacts);
+    assert_eq!(
+        store.preferences().workspace_sessions.get(&pid("b")),
+        Some(&id("one"))
+    );
+    assert!(
+        !store
+            .preferences()
+            .workspace_sessions
+            .contains_key(&pid("a"))
+    );
+    assert_eq!(
+        store.preferences().workspace_inspector_tabs.get(&pid("a")),
+        Some(&InspectorTab::Changes)
+    );
+    assert!(
+        !drain(&mut effects)
+            .into_iter()
+            .any(|effect| matches!(effect, StoreEffect::Resume { .. }))
+    );
+}
+
+#[test]
+fn stale_selected_session_cleared_on_empty_workspace_hydration_is_saved() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("prefs.json");
+    let prefs = Prefs {
+        workspace_tabs: Some(vec![pid("empty")]),
+        last_active_workspace: Some(pid("empty")),
+        last_selected_session: Some(id("gone")),
+        sidebar_project_order: vec![pid("empty")],
+        workspace_inspector_tabs: [(pid("empty"), InspectorTab::Info)].into_iter().collect(),
+        ..Prefs::default()
+    };
+    prefs.save(&path).unwrap();
+    let (mut store, _) = SessionStore::load(&path).unwrap();
+
+    store.hydrate(SessionListResult {
+        sessions: Vec::new(),
+        projects: vec![project("empty", "Empty")],
+    });
+
+    assert_eq!(store.active_workspace_id(), Some(&pid("empty")));
+    assert_eq!(store.selected_session_id(), None);
+    assert_eq!(Prefs::load(&path).unwrap().last_selected_session, None);
+}
+
+#[test]
+fn moving_an_unselected_session_prunes_its_synthetic_tab_without_opening_the_destination() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "a", 1.0), session("two", "synthetic", 2.0)],
+        vec![project("a", "Alpha")],
+        Prefs::default(),
+    );
+    store.open_workspace_tab(pid("synthetic"));
+    store.set_active_workspace(pid("a"));
+    drain(&mut effects);
+
+    store.upsert_session(session("two", "new-synthetic", 2.0));
+
+    assert_eq!(tab_ids(&store), vec![pid("a")]);
+    assert_eq!(store.active_workspace_id(), Some(&pid("a")));
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+    assert!(
+        !store
+            .preferences()
+            .workspace_sessions
+            .contains_key(&pid("synthetic"))
+    );
+    assert!(
+        !drain(&mut effects)
+            .into_iter()
+            .any(|effect| matches!(effect, StoreEffect::Resume { .. }))
+    );
+    store.open_workspace_tab(pid("new-synthetic"));
+    assert_eq!(store.selected_session_id(), Some(&id("two")));
+}
+
+#[test]
+fn removing_an_unselected_synthetic_workspaces_final_session_prunes_only_that_tab() {
+    let (mut store, _) = hydrated(
+        vec![session("one", "a", 1.0), session("two", "synthetic", 2.0)],
+        vec![project("a", "Alpha")],
+        Prefs::default(),
+    );
+    store.open_workspace_tab(pid("synthetic"));
+    store.set_active_workspace(pid("a"));
+
+    store.remove_session_record(&id("two"));
+
+    assert_eq!(tab_ids(&store), vec![pid("a")]);
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+    assert!(
+        !store
+            .preferences()
+            .workspace_sessions
+            .contains_key(&pid("synthetic"))
+    );
+}
+
+#[test]
+fn archived_or_crashed_sessions_keep_their_synthetic_workspace_available() {
+    for archived in [false, true] {
+        let (mut store, _) = hydrated(
+            vec![session("one", "a", 1.0), session("two", "synthetic", 2.0)],
+            vec![project("a", "Alpha")],
+            Prefs::default(),
+        );
+        store.open_workspace_tab(pid("synthetic"));
+        store.set_active_workspace(pid("a"));
+        let mut updated = session("two", "synthetic", 2.0);
+        if archived {
+            updated.archived_at = Some(DateMillis(3.0));
+        } else {
+            updated.status = SessionStatus::Exited(ExitInfo {
+                reason: ExitReason::Exited,
+                code: Some(1),
+                signal: None,
+            });
+            updated.resumability = Resumability::NotResumable;
+        }
+
+        store.upsert_session(updated);
+
+        assert_eq!(tab_ids(&store), vec![pid("a"), pid("synthetic")]);
+        assert_eq!(store.selected_session_id(), Some(&id("one")));
+        assert!(store.open_workspace_tab(pid("synthetic")));
+    }
+}
+
+#[test]
+fn clean_unselected_shell_exit_prunes_its_synthetic_tab_before_remove_acknowledgement() {
+    let (mut store, mut effects) = hydrated(
+        vec![session("one", "a", 1.0), session("two", "synthetic", 2.0)],
+        vec![project("a", "Alpha")],
+        Prefs::default(),
+    );
+    store.open_workspace_tab(pid("synthetic"));
+    store.set_active_workspace(pid("a"));
+    drain(&mut effects);
+    let mut exited = session("two", "synthetic", 2.0);
+    exited.kind = AgentKind::SHELL;
+    exited.status = SessionStatus::Exited(ExitInfo {
+        reason: ExitReason::Exited,
+        code: Some(0),
+        signal: None,
+    });
+    exited.resumability = Resumability::NotResumable;
+
+    store.upsert_session(exited);
+
+    assert_eq!(tab_ids(&store), vec![pid("a")]);
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+    assert!(store.closing.contains(&id("two")));
+    assert!(drain(&mut effects).contains(&StoreEffect::Remove(id("two"))));
+}
+
+#[test]
+fn removing_a_remembered_session_restores_a_survivor_when_reopening_its_tab() {
+    let (mut store, _) = hydrated(
+        vec![session("one", "a", 1.0), session("two", "a", 2.0)],
+        vec![project("a", "Alpha")],
+        Prefs::default(),
+    );
+    store.select(id("two"));
+    store.close_active_workspace_tab();
+    store.remove_session_record(&id("two"));
+
+    assert!(store.workspace_tabs().is_empty());
+    assert!(
+        !store
+            .preferences()
+            .workspace_sessions
+            .contains_key(&pid("a"))
+    );
+    store.open_workspace_tab(pid("a"));
+    assert_eq!(store.selected_session_id(), Some(&id("one")));
+}
+
+#[test]
+fn workspace_tabs_and_each_workspaces_context_survive_store_reloads() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("prefs.json");
+    let records = vec![
+        session("a-one", "a", 1.0),
+        session("a-two", "a", 2.0),
+        session("b-one", "b", 3.0),
+    ];
+    let projects = vec![project("a", "Alpha"), project("b", "Beta")];
+    let (mut store, _) = SessionStore::load(&path).unwrap();
+    store.hydrate(SessionListResult {
+        sessions: records.clone(),
+        projects: projects.clone(),
+    });
+    store.select(id("a-two"));
+    store
+        .update_preferences(|prefs| prefs.inspector_tab = InspectorTab::Changes)
+        .unwrap();
+    store.open_workspace_tab(pid("b"));
+    store
+        .update_preferences(|prefs| prefs.inspector_tab = InspectorTab::Code)
+        .unwrap();
+    drop(store);
+
+    let (mut restored, _) = SessionStore::load(&path).unwrap();
+    restored.hydrate(SessionListResult {
+        sessions: records.clone(),
+        projects: projects.clone(),
+    });
+    assert_eq!(tab_ids(&restored), vec![pid("a"), pid("b")]);
+    assert_eq!(restored.active_workspace_id(), Some(&pid("b")));
+    assert_eq!(restored.selected_session_id(), Some(&id("b-one")));
+    assert_eq!(restored.preferences().inspector_tab, InspectorTab::Code);
+    restored.set_active_workspace(pid("a"));
+    assert_eq!(restored.selected_session_id(), Some(&id("a-two")));
+    assert_eq!(restored.preferences().inspector_tab, InspectorTab::Changes);
+    restored.close_workspace_tab(&pid("b"));
+    restored.close_active_workspace_tab();
+    drop(restored);
+
+    let (mut closed, _) = SessionStore::load(&path).unwrap();
+    closed.hydrate(SessionListResult {
+        sessions: records,
+        projects,
+    });
+    assert!(closed.workspace_tabs().is_empty());
+    assert_eq!(closed.active_workspace_id(), None);
+    assert_eq!(closed.selected_session_id(), None);
+    closed.open_workspace_tab(pid("b"));
+    assert_eq!(closed.selected_session_id(), Some(&id("b-one")));
+    assert_eq!(closed.preferences().inspector_tab, InspectorTab::Code);
+}
+
 #[test]
 fn stale_restored_selection_falls_back_and_is_replaced() {
     let prefs = Prefs {
@@ -1068,6 +1738,7 @@ fn removing_a_project_takes_its_sessions_and_its_sidebar_prefs_with_it() {
         sidebar_pinned_projects: vec![pid("gone")],
         sidebar_collapsed_projects: vec![pid("gone")],
         last_active_workspace: Some(pid("gone")),
+        workspace_tabs: Some(vec![pid("gone"), pid("stay")]),
         ..Prefs::default()
     };
     let (mut store, mut effects) = hydrated(

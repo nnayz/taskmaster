@@ -1,6 +1,6 @@
 # Zeus
 
-<img src="images/zeus-pixel-art.png" alt="Zeus" width="280">
+<img src="images/zeus-logo.svg" alt="Zeus" width="160">
 
 Native macOS control plane for coding agents. Run Claude Code, Codex, Cursor,
 Grok, OpenCode, Gemini, and a catalog of other CLIs in parallel, locally or
@@ -27,7 +27,7 @@ the complete installation flow.
 | Section | What it covers |
 |---------|----------------|
 | [Getting started](getting-started.md) | First project, first session, first quit |
-| [The workbench](workbench.md) | Sidebar, inspector, lineage tree, overview |
+| [The workbench](workbench.md) | Sidebar, panel tabs, terminal, overview |
 | [Keyboard](keyboard.md) | Every shortcut that matters |
 | [Agents and status](agents.md) | Catalog, resume, what the colors mean |
 | [Worktrees](worktrees.md) | Isolated checkouts for parallel edits |

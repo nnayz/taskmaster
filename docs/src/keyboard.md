@@ -11,9 +11,9 @@ is the backup for anything you forget.
 | `⌘T` | New session with your default agent |
 | `⌥⌘T` | New terminal (login shell) |
 | `⌘⇧N` | New Codex session |
-| `⌘O` | Open a project folder |
+| `⌘O` | Open the workspace chooser (known workspaces or a folder) |
 | `⌘P` | Search project files, agent sessions, and folders |
-| `⌘W` | Close the selected session |
+| `⌘W` | Close the focused panel tab, or the selected main-terminal session |
 | `⌘⇧T` | Reopen the last closed session |
 | `⌘⇧W` | Archive the selected session |
 | `⌘Q` | Quit the app (sessions keep running) |
@@ -52,17 +52,6 @@ is the backup for anything you forget.
 | `⌘C` / `⌘V` | Copy / paste |
 | `⌘+` `⌘-` `⌘0` | Zoom in, out, reset |
 
-## Workflow tree
-
-When the lineage view is **Tree**:
-
-| Shortcut | Action |
-|----------|--------|
-| `↑` `↓` | Move between nodes |
-| Return | Open that session's terminal |
-| Double-click | Same |
-| Esc | Back to tabs |
-
 ## New Agent composer
 
 `⌘N` opens the composer in the main pane. Recipes remember the agent, project,
@@ -91,7 +80,6 @@ type:
 - `new claude`, `new grok`, `new opencode`
 - a project folder name
 - a host name (`new codex on forge`)
-- `workflow` for the agent tree
 - `worktree`, `settings`, `update`
 
 Unavailable agents stay searchable. If Zeus has a setup URL it will open the
