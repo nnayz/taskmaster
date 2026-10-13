@@ -56,6 +56,11 @@ cargo clippy --workspace -- -D warnings
 ./scripts/build.sh
 ```
 
+The macOS app uses a layered Icon Composer icon with an ICNS fallback. See
+[icon artwork and regeneration](assets/icon-assets/README.md) when changing it;
+release and development bundles install their matching icon resources before
+signing.
+
 Run the app under development through `dev.sh`, which builds a throwaway app
 bundle with a commit-specific name, window title, Dock icon, and in-window
 build marker. Its bundle id is deliberately stable so macOS Files & Folders
@@ -66,6 +71,7 @@ finding or launching the shared daemon:
 
 ```sh
 ./scripts/dev.sh
+./scripts/dev.sh --watch
 ./scripts/dev.sh --release
 ./scripts/dev.sh --settings remote
 ./scripts/dev.sh -- --features audio-playback
@@ -120,6 +126,8 @@ Install [Watchexec](https://github.com/watchexec/watchexec) once with
 `brew install watchexec`, then use these launchers from `zeus/`:
 
 ```sh
+./scripts/dev.sh --watch             # live app, rebuild and restart on save
+./scripts/dev.sh --watch --settings remote --release
 ./scripts/dev-ui.sh                  # workbench preview
 ZEUS_WORKSPACE_CHOOSER_PREVIEW=1 ./scripts/dev-ui.sh  # workspace chooser
 ZEUS_PANEL_PREVIEW=menu ./scripts/dev-ui.sh           # dynamic tabs and + menu
@@ -132,7 +140,7 @@ ZEUS_PANEL_PREVIEW=browser ./scripts/dev-ui.sh        # offline embedded browser
 The launchers resolve their own workspace directory, so they also work from
 the repository root as `./zeus/scripts/dev-ui.sh`, for example. They watch Rust
 sources, assets, scripts, and workspace configuration. Saving rebuilds and
-reopens the preview; Rust changes still require compilation. Build failures
+reopens the app or preview; Rust changes still require compilation. Build failures
 leave the watcher running, so fix the error and save again. Stop with Ctrl+C.
 
 Workbench and Settings previews use the existing deterministic fixtures without
@@ -142,8 +150,9 @@ connecting to the Engine. Choose another workbench scenario with
 and `remote`. Dev arguments such as `--release` can be passed through:
 `./scripts/dev-ui.sh --release` or `./scripts/dev-settings.sh general --release`.
 
-All three launchers share `scripts/dev-watch.sh`, which watches inputs explicitly
-so build output and development app bundles do not cause rebuild loops.
+Watch mode and the preview launchers share `scripts/dev-watch.sh`, which watches
+inputs explicitly so build output and development app bundles do not cause
+rebuild loops.
 
 ## Remote hosts
 

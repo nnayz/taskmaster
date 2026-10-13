@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="-24 -24 560 560">
+  <!-- Preserve the original connected lightning/frame path. The inset keeps
+       the artwork clear of Apple's icon enclosure and material highlights. -->
+  <path fill="none" stroke="#FFFFFF" stroke-width="8"
+        stroke-linecap="round" stroke-linejoin="round"
+        d="M110.4 4
+           H188.8
+           L163.6 136
+           L222.4 127
+           L183.2 331
+           L254.6 307
+           L230.8 445
+           L359.6 203.5
+           L284 203.5
+           L354 85
+           L289.6 103
+           L342.8 4
+           L394.6 4
+           H401.6
+           C460.36 4 508 62.76 508 110.4
+           V401.6
+           C508 460.36 460.36 508 401.6 508
+           H110.4
+           C51.64 508 4 460.36 4 401.6
+           V110.4
+           C4 62.76 51.64 4 110.4 4
+           Z"/>
+</svg>

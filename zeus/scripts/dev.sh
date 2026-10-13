@@ -7,15 +7,18 @@ workspace_dir="$(cd "${script_dir}/.." && pwd)"
 target_dir="${CARGO_TARGET_DIR:-${workspace_dir}/target}"
 profile="debug"
 settings_preview=""
+watch_mode=0
+dev_command=("${script_dir}/dev.sh")
 cargo_args=()
 
 usage() {
     cat <<'USAGE'
-Usage: scripts/dev.sh [--release] [--settings TAB] [-- CARGO_BUILD_ARGS...]
+Usage: scripts/dev.sh [--watch] [--release] [--settings TAB] [-- CARGO_BUILD_ARGS...]
 
 Build and launch an unmistakable development copy of zeus.
 
 Options:
+  --watch         Rebuild and restart on changes using watchexec.
   --release       Build with Cargo's release profile.
   --settings TAB  Open Settings on general, terminal, resources, or remote.
   -h, --help      Show this help.
@@ -28,9 +31,14 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --watch)
+            watch_mode=1
+            shift
+            ;;
         --release)
             profile="release"
             cargo_args+=("$1")
+            dev_command+=("$1")
             shift
             ;;
         --settings)
@@ -40,10 +48,12 @@ while [[ $# -gt 0 ]]; do
                 exit 2
             fi
             settings_preview="$2"
+            dev_command+=("$1" "$2")
             shift 2
             ;;
         --settings=*)
             settings_preview="${1#*=}"
+            dev_command+=("$1")
             shift
             ;;
         -h|--help)
@@ -51,6 +61,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --)
+            dev_command+=("$@")
             shift
             cargo_args+=("$@")
             break
@@ -80,6 +91,12 @@ if (( ${#cargo_args[@]} > 0 )); then
                 ;;
         esac
     done
+fi
+
+if [[ "${watch_mode}" == "1" ]]; then
+    # Consume --watch here so watchexec runs the ordinary build/launch path
+    # once per change. Preserve the other arguments as an argv array.
+    exec "${script_dir}/dev-watch.sh" "${dev_command[@]}"
 fi
 
 branch="$(git -C "${workspace_dir}" symbolic-ref --quiet --short HEAD || true)"
@@ -150,7 +167,6 @@ contents="${app_path}/Contents"
 app_bin_dir="${contents}/Resources/bin"
 mkdir -p "${contents}/MacOS" "${app_bin_dir}"
 cp "${binary}" "${contents}/MacOS/zeus"
-cp "${workspace_dir}/assets/dev-icon.icns" "${contents}/Resources/dev-icon.icns"
 cp "${engine_bin}" "${app_bin_dir}/zeusd-rs"
 cp "${cli_bin}" "${app_bin_dir}/zeus"
 cp "${mcp_bin}" "${app_bin_dir}/zeus-mcp"
@@ -184,6 +200,8 @@ cat > "${contents}/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+"${workspace_dir}/scripts/install-icon.sh" dev "${app_path}"
 
 # A stable development certificate keeps TCC grants across rebuilds. Prefer an
 # explicit identity, then the repository's optional "Zeus Dev" certificate;
