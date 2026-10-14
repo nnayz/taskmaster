@@ -1,6 +1,6 @@
 # Security model
 
-Zeus is a local developer tool that deliberately launches other powerful local
+Taskmaster is a local developer tool that deliberately launches other powerful local
 developer tools. It reduces orchestration mistakes; it is not a sandbox.
 
 ## Trust boundaries
@@ -21,7 +21,7 @@ an explicit migration.
 Shells, coding agents, hooks, MCP servers, and browser automation run with the
 macOS user's privileges. They can read any files that user and macOS privacy
 controls allow, use inherited environment variables, access configured
-credentials, and make network requests. Zeus does not inspect or approve each
+credentials, and make network requests. Taskmaster does not inspect or approve each
 operation they perform.
 
 Use separate worktrees to avoid accidental edit collisions, not as a security
@@ -31,7 +31,7 @@ restrict credentials and network access there.
 ### Remote nodes
 
 Remote sessions cross the SSH boundary and run under the configured remote
-account. Zeus relies on SSH host verification, keys, and configuration; it does
+account. Taskmaster relies on SSH host verification, keys, and configuration; it does
 not provide a separate encrypted relay or authorization layer. Prefer a
 dedicated non-admin user and narrowly scoped credentials.
 
@@ -43,54 +43,27 @@ Team ID and bundle identifier, validates notarization, and refuses downgrades.
 Published release assets are treated as immutable. Details are in
 [Updates](updates.md).
 
-### Companion: experimental contract, production no-go
+### Companion
 
-The [Companion architecture](companion-architecture.md) defines the optional
-private-network interface for #76, aligned with #73's API foundation `76d4c4a`
-and #75's terminal seam `137fda6`. The selected placement is an Engine-launched
-narrow Rust sidecar using `zeus-client` and curated REST/JSON + WSS external v1
-DTOs. The Engine owns sessions, metadata mutation epoch/revision/replay fencing
-and terminal controller/command sequencing. The sidecar's auth store owns device
-credentials. Arbitrary RPC, SSH/Holder sockets, raw terminal resize/signal/diffs,
-environments and provider keys are excluded. Full screen reads must not take
-control; text commands require explicit controller takeover and device scope.
+The iOS Companion is an optional client of a private-network HTTPS gateway.
+The phone does not connect to the Engine, a PTY, or SSH. Pairing starts on
+the trusted computer, expires quickly, and is meant for one device. See
+[iOS Companion](ios-companion.md) for setup and day-to-day use.
 
-The spike defaults to `127.0.0.1:19773`; private literal binds require explicit
-opt-in and TLS. Wildcard/public, hostname, link-local and mapped-address binds
-are conservatively unsupported. Loopback HTTP is an experimental local
-fixture/backend facility, not permission for plaintext mobile access. Deployed
-clients require HTTPS/WSS and valid server identity without ATS exceptions.
-Tailscale, Headscale, WireGuard and LAN reachability do not authorize a device.
-Zeus does not configure overlays, install CAs/services or trust proxy identity
-headers as credentials. Proxy/upstream and browser identity validation remain
-production gates.
+Companion is an experimental interface. It is not a sandbox and not a
+production remote-access product. A device that can only read the screen can
+still see prompts, source, paths, and secrets. Do not publish the gateway on
+the public internet. Being on the same LAN, Tailscale, or another overlay
+does not by itself authorize a phone.
 
-Locally initiated single-use pairing expires after 5 minutes. The client checks
-the approved `server_id` in pairing and Hello. Each device gets a scoped
-30-day random credential; the sidecar stores its SHA-256 digest, never
-plaintext. Recovery/rotation is revoke then re-enroll. Subsequent authentication
-rejects revoked tokens; immediate revocation across replay, queued effects and
-leases still needs integration proof. Native iOS credentials belong in
-device-only, non-synchronizing Keychain storage in a separate repository. The
-in-repo PWA keeps tokens only in memory and re-pairs after reload. Its privacy
-curtain does not guarantee exclusion from iOS app-switcher captures.
-
-The experimental contract uses `/v1/hello`, `/v1/pair`, full `/screen`
-projections, explicit control/text routes and first-frame WSS bearer auth.
-Events invalidate projections; a bounded 128-event window supports resync.
-Engine metadata replay rejection is in-memory per epoch, not a durable outcome
-journal. Uncertain results must not be automatically retried. Exact Origin
-checks, inert terminal text and no API caching protect the browser boundary.
-The architecture states actual wire/queue/time limits and remaining Engine/IPC
-budget gaps, operation allow/deny lists, threats, tests and production gates.
-Durable outcomes/fences, one-time WSS tickets, per-resource grants, native pins
-and timed leases are unimplemented follow-up options, not shipped guarantees.
+The API, trust model, and client-development notes are in the
+[developer guide on GitHub](https://github.com/nnayz/taskmaster/blob/main/docs/dev/src/companion-architecture.md).
 
 ## Sensitive data
 
 Terminal replay logs can contain prompts, output, paths, and secrets emitted by
 tools. PR monitoring, remote hosts, and third-party agents can send data to their
-own services. Zeus itself has no account, analytics, or telemetry service; see
+own services. Taskmaster itself has no account, analytics, or telemetry service; see
 [Privacy](privacy.md).
 
 Companion snapshots and recent output are sensitive data: they may disclose
@@ -106,7 +79,7 @@ an operation that committed before revocation.
 
 ## Security assumptions
 
-Zeus assumes:
+Taskmaster assumes:
 
 - macOS and the current user account are not already compromised;
 - installed agents, MCP servers, hooks, and shell configuration are trusted;

@@ -1,0 +1,56 @@
+<main id="main">
+      <section class="intro" aria-labelledby="page-title">
+        <div class="intro-heading">
+          <h1 id="page-title">The command center for coding agents</h1>
+          <p><span class="sub-line">Claude Code, Codex, Cursor, Grok, OpenCode, Gemini, and shells, each in a real terminal.</span> <span class="sub-line">Taskmaster shows which ones need you.</span></p>
+        </div>
+        <div class="intro-actions">
+          <a id="download-primary" class="button primary" href="{{dmg}}"><img class="button-mark" src="{{base}}/assets/brand/apple.svg" width="15" height="15" alt=""><span class="button-label">Download for macOS</span></a>
+          <a class="button secondary" href="{{base}}/install/">Install guide</a>
+        </div>
+      </section>
+      <p class="lede-note" id="download-version">macOS 15 or newer. Universal build, ad-hoc signed. Right-click and choose Open the first time. <a id="download-notes" href="{{notes}}">Release notes</a> · <a id="download-zip" href="{{zip}}">ZIP</a></p>
+
+      <figure class="product-shot">
+        <img src="{{base}}/assets/preview.png" width="1440" height="900" alt="Taskmaster desktop app: a sidebar of agent sessions beside a live terminal">
+      </figure>
+
+      <section class="features" id="features" aria-labelledby="features-title">
+        <div class="features-heading"><h2 id="features-title">Features</h2><a href="{{base}}/docs/">Read the docs <span class="icon" data-icon="chevron-right" aria-hidden="true"></span></a></div>
+        <dl class="bento">
+          <div class="bento-card"><div class="bento-visual" aria-hidden="true"><div class="mini"><div class="mini-title">New Agent</div><div class="mini-row selected"><i class="agent-logo" data-agent="claude"></i><span>Claude Code</span></div><div class="mini-row"><i class="agent-logo" data-agent="codex"></i><span>Codex</span></div><div class="mini-row"><i class="agent-logo" data-agent="cursor"></i><span>Cursor</span></div><div class="mini-row"><i class="agent-logo" data-agent="gemini"></i><span>Gemini</span></div></div></div><dt>The agents you already use</dt><dd>Claude Code, Codex, Cursor, Grok, OpenCode, Gemini, and the rest of the catalog. Each one gets a real PTY and the login already on your machine.</dd></div>
+          <div class="bento-card"><div class="bento-visual" aria-hidden="true"><div class="mini"><div class="mini-row"><span class="icon" data-icon="check" aria-hidden="true"></span><span>Ship the release</span><i class="agent-logo" data-agent="claude"></i></div><div class="mini-tree"><div class="mini-row"><span class="icon" data-icon="check" aria-hidden="true"></span><span>Write the notes</span><small>2m</small></div><div class="mini-row"><span class="icon" data-icon="check" aria-hidden="true"></span><span>Review the diff</span><small>7m</small></div><div class="mini-row working"><span class="icon" data-icon="working-0" aria-hidden="true"></span><span>Answer the question</span><small>9m</small></div></div></div></div><dt>Agents that run agents</dt><dd>A lead session can spawn other sessions, watch them, and answer when they ask. You follow the tree instead of the scrollback.</dd></div>
+          <div class="bento-card"><div class="bento-visual" aria-hidden="true"><div class="mini"><div class="mini-title"><span class="icon" data-icon="bell" aria-hidden="true"></span>Needs input</div><div class="mini-row note"><span class="icon" data-icon="warning" aria-hidden="true"></span><span>Auth rewrite</span><small>Claude has a question</small></div><div class="mini-row done"><span class="icon" data-icon="check-circle" aria-hidden="true"></span><span>Release notes</span><small>Codex finished</small></div></div></div><dt>Know who needs you</dt><dd>Working, needs input, or done. One sidebar, not a wall of terminals. ⌘⇧J jumps to the next session that is waiting.</dd></div>
+          <div class="bento-card wide"><div class="bento-visual" aria-hidden="true"><div class="mini mini-table"><div class="mini-tr head"><span>Branch</span><span>Agent</span><span>Changes</span></div><div class="mini-tr"><span><span class="icon" data-icon="branch" aria-hidden="true"></span>fix/reconnect</span><span><i class="agent-logo" data-agent="codex"></i></span><span><b>+42</b> <s>−7</s></span></div><div class="mini-tr"><span><span class="icon" data-icon="branch" aria-hidden="true"></span>feat/worktrees</span><span><i class="agent-logo" data-agent="claude"></i></span><span><b>+118</b> <s>−20</s></span></div></div></div><dt>A checkout per writer</dt><dd>Concurrent editors get their own Git worktree and branch, so parallel sessions do not clobber one checkout.</dd></div>
+          <div class="bento-card wide"><div class="bento-visual" aria-hidden="true"><div class="mini mini-diff"><div class="mini-file"><span class="icon" data-icon="code" aria-hidden="true"></span>src/session.rs<small>+18 −6</small></div><code class="del">−    session.kill();</code><code class="add">+    engine.keep(session);</code></div><div class="mini mini-pr"><span class="icon" data-icon="pull-request" aria-hidden="true"></span><span>Review beside the session</span><small><span class="icon" data-icon="check" aria-hidden="true"></span>Ready</small></div></div><dt>Review where you watched the work</dt><dd>Read the diff in the same window, then stage, commit, and follow the pull request.</dd></div>
+        </dl>
+        <dl class="bento-small">
+          <div class="bento-card small"><span class="icon" data-icon="moon" aria-hidden="true"></span><dt>Sessions outlive the window</dt><dd>Quitting Taskmaster does not stop the Engine. Idle sessions can hibernate and wake in place.</dd></div>
+          <div class="bento-card small"><span class="icon" data-icon="server" aria-hidden="true"></span><dt>Your own SSH hosts</dt><dd>Run a session on a machine you control. No tmux, no sudo, no hosted relay.</dd></div>
+          <div class="bento-card small"><span class="icon" data-icon="monitor" aria-hidden="true"></span><dt>iOS companion</dt><dd>Pair an iPhone or iPad on your private network and check a session from the phone.</dd></div>
+          <div class="bento-card small"><span class="icon" data-icon="refresh" aria-hidden="true"></span><dt>Resume where it matters</dt><dd>Claude Code and Codex can pick a conversation back up. Other agents come back as a fresh CLI in the same folder.</dd></div>
+          <div class="bento-card small"><span class="icon" data-icon="keyboard" aria-hidden="true"></span><dt>Command menu</dt><dd>Projects, sessions, and settings from ⌘K. ⌘T starts the default agent.</dd></div>
+          <div class="bento-card small"><span class="icon" data-icon="shield" aria-hidden="true"></span><dt>Open source, no Taskmaster account</dt><dd>Apache-2.0. Native Rust and GPUI. No telemetry. You pay the agent vendors, not Taskmaster.</dd></div>
+        </dl>
+        <section class="more-section" aria-labelledby="playbooks-title">
+          <div class="features-heading"><h2 id="playbooks-title">Playbooks</h2><a href="{{base}}/docs/playbooks/">All playbooks <span class="icon" data-icon="chevron-right" aria-hidden="true"></span></a></div>
+          <dl class="bento-small guide-cards">
+            <div class="bento-card small guide-card"><dt><a href="{{base}}/docs/playbooks/parallel-worktrees/">Parallel agents in worktrees</a></dt><dd>More than one agent will edit the same repository.</dd><span class="icon" data-icon="chevron-right" aria-hidden="true"></span></div>
+            <div class="bento-card small guide-card"><dt><a href="{{base}}/docs/playbooks/delegate/">Delegate and follow children</a></dt><dd>A lead hires other sessions and you want to follow them.</dd><span class="icon" data-icon="chevron-right" aria-hidden="true"></span></div>
+            <div class="bento-card small guide-card"><dt><a href="{{base}}/docs/playbooks/review-pull-request/">Review and open a pull request</a></dt><dd>Read the diff and get to the pull request.</dd><span class="icon" data-icon="chevron-right" aria-hidden="true"></span></div>
+            <div class="bento-card small guide-card"><dt><a href="{{base}}/docs/playbooks/local-or-remote/">Local, remote, reconnect</a></dt><dd>Run the agent here or on another machine, then find it again.</dd><span class="icon" data-icon="chevron-right" aria-hidden="true"></span></div>
+          </dl>
+        </section>
+        <section class="more-section" id="faq" aria-labelledby="faq-title">
+          <div class="features-heading"><h2 id="faq-title">Questions</h2></div>
+          <dl class="faq-grid">
+            <div><dt>Is Taskmaster free?</dt><dd>Yes. Taskmaster is free and open source under Apache-2.0. You pay for the agents you use, through the accounts you already have.</dd></div>
+            <div><dt>Which agents does it run?</dt><dd>Any terminal agent Taskmaster has a manifest for, including Claude Code, Codex, Cursor, Grok, OpenCode, and Gemini. A missing binary stays in the list with an install hint. Anything without a manifest opens as a shell.</dd></div>
+            <div><dt>What happens when I quit?</dt><dd>The window closes. The Engine keeps the PTYs. Reopen Taskmaster and the sessions are still there. Agents that support resume can continue a conversation after a clean exit.</dd></div>
+            <div><dt>Can agents work together?</dt><dd>Yes. A hosted agent can spawn another session, read its output, and answer its questions through Taskmaster MCP. The children show up under the parent in the sidebar.</dd></div>
+            <div><dt>Does Taskmaster upload my prompts?</dt><dd>There is no Taskmaster account and no telemetry. Agents run on your Mac or on SSH hosts you configure. Logs on that Mac can still contain prompts and secrets a process printed.</dd></div>
+            <div><dt>Which Macs are supported?</dt><dd>macOS 15 or newer, Apple silicon and Intel, from one universal DMG. Current builds are ad-hoc signed, not notarized, and not installed with Homebrew. The in-app updater will not offer them.</dd></div>
+          </dl>
+        </section>
+      </section>
+    </main>

@@ -6,12 +6,12 @@ security reports.
 ## Diagnostics
 
 ```sh
-zeus doctor
+taskmaster doctor
 ```
 
 Include with your email:
 
-- Zeus version (the account popover, or Settings → General → Updates)
+- Taskmaster version (the account popover, or Settings → General → Updates)
 - macOS version and chip
 - agent involved (if any)
 - steps to reproduce
@@ -22,8 +22,8 @@ Include with your email:
 Daemon logs and session state:
 
 ```text
-~/Library/Application Support/Zeus
-~/Library/Application Support/zeus
+~/Library/Application Support/Taskmaster
+~/Library/Application Support/taskmaster
 ```
 
 These may contain prompts, command output, paths, or secrets printed by a

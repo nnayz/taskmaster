@@ -1,27 +1,60 @@
 # Documentation
 
-User-facing documentation is built with [mdBook](https://rust-lang.github.io/mdBook/)
-and lives under `docs/`.
+Taskmaster has two guides. Only one of them is a website.
+
+| Guide | Who it is for | Source | Published |
+|-------|----------------|--------|-----------|
+| User guide, including playbooks | Installing and operating Taskmaster | `docs/src/` | [nnayz.github.io/taskmaster/docs/](https://nnayz.github.io/taskmaster/docs/) |
+| Developer guide | Building, testing, and maintaining Taskmaster | `docs/dev/src/` | GitHub only. Not on the website. |
+
+Playbooks are user-facing pages under the same `/docs/` base, at
+`/docs/playbooks/`. They are not a separate site. The website in `website/`
+renders both from `docs/src/SUMMARY.md`. There is no mdBook and no Fumadocs
+build.
+
+## Where a new page goes
+
+Put operator instructions in `docs/src/` and add them to `docs/src/SUMMARY.md`.
+That includes CLI commands and advanced remote workflows when they explain
+how to use Taskmaster. Task write-ups with prerequisites, steps, expected results,
+and pitfalls go under `docs/src/playbooks/` and in the Playbooks section of
+`SUMMARY.md`.
+
+Put contributor instructions in `docs/dev/src/` and add them to
+`docs/dev/src/SUMMARY.md`. That includes the workspace map, manifests, tests,
+packaging, and pointers at Engine, Holder, and Companion internals. Do not add
+those pages to the website.
+
+Do not copy an architecture decision into either guide when a canonical file
+already exists. Link it from `docs/dev/src/engineering-index.md` instead.
+`taskmaster/REMOTE_PORT.md`, `taskmaster/PACKAGING.md`, `taskmaster/UPDATING.md`, and the
+Companion specs are the sources of truth for their subjects.
+`taskmaster/PORT.md` and `taskmaster/PLAN.md` are historical. Say so if you cite them.
+
+If a user-guide URL must change, add a redirect in `website/scripts/docs.mjs`
+and repair links. Leaving the old chapter in `docs/src/SUMMARY.md` puts it
+back into the website navigation and search.
+
+## Preview and check
+
+Node.js 22 or newer. From the repository root:
 
 ```sh
-# from the repository root (/Users/nayz/Desktop/zeus)
-brew install mdbook             # or: cargo install mdbook --locked
-mdbook serve docs --open        # http://localhost:3000
-mdbook build docs               # output in docs/book/
+cd website
+npm test
+npm run dev
 ```
 
-If your shell is already in `docs/`, drop the extra path:
+User guide: <http://127.0.0.1:4177/docs/>. Playbooks:
+<http://127.0.0.1:4177/docs/playbooks/>.
 
-```sh
-cd docs
-mdbook serve --open
-```
+GitHub Pages publishes `website/dist` with `BASE_PATH` set, so the same tree
+is served at `https://nnayz.github.io/taskmaster/docs/`.
 
-Do not run `mdbook serve docs` from `docs/` or `docs/book/`. That looks for
-`docs/src/SUMMARY.md` under the current directory and fails.
+## User guide chapters
 
-| Book page | Source |
-|-----------|--------|
+| Section | Source |
+|---------|--------|
 | Introduction | [`src/introduction.md`](src/introduction.md) |
 | Getting started | [`src/getting-started.md`](src/getting-started.md) |
 | The workbench | [`src/workbench.md`](src/workbench.md) |
@@ -34,12 +67,16 @@ Do not run `mdbook serve docs` from `docs/` or `docs/book/`. That looks for
 | Command line | [`src/cli.md`](src/cli.md) |
 | Remote hosts | [`src/remote-hosts.md`](src/remote-hosts.md) |
 | Remote nodes | [`src/remote-nodes.md`](src/remote-nodes.md) |
+| iOS Companion | [`src/ios-companion.md`](src/ios-companion.md) |
 | Updates | [`src/updates.md`](src/updates.md) |
+| Playbooks | [`src/playbooks/`](src/playbooks/) |
 | Security model | [`src/security-model.md`](src/security-model.md) |
 | Security policy | [`src/security-policy.md`](src/security-policy.md) |
 | Privacy | [`src/privacy.md`](src/privacy.md) |
 | Support | [`src/support.md`](src/support.md) |
 | Roadmap | [`src/roadmap.md`](src/roadmap.md) |
 
-Engineering notes stay next to the code (`zeus/PACKAGING.md`, `zeus/PORT.md`,
-`zeus/REMOTE_PORT.md`, `zeus/PERF.md`).
+Companion architecture and the screenshot soak test are developer pages:
+[`dev/src/companion-architecture.md`](dev/src/companion-architecture.md) and
+[`dev/src/testing.md`](dev/src/testing.md). Old user-guide URLs redirect to
+GitHub.
