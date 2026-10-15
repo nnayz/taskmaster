@@ -46,7 +46,7 @@ const agentPreviews = (() => {
           html: `<div class="codex-welcome"><strong><span>›_</span> OpenAI Codex</strong><div><span>model:</span> gpt-6 <small>/model to change</small></div><div><span>directory:</span> ~/fun/taskmaster</div></div><div class="codex-user">› ${chat.prompt}</div><p class="cli-response">I’ll match the app’s layout and keep the terminal opaque.</p><div class="codex-explored"><strong>Explored</strong><div>└ Read <span>index.html, style.css</span></div></div><div class="codex-explored"><strong>Edited</strong><div>└ <span>website/style.css</span> <em>+5</em></div></div><div class="cli-divider">Worked for 42s</div><div class="cli-summary"><p>Updated the preview:</p><p>— Native window proportions<br>— Translucent sidebars and toolbar<br>— Rosé Pine shader background</p><button class="result-link" data-open="links">Open preview ↗</button></div>`,
           composer: command('›', 'Ask a question or describe a task'),
           footer: '<span>gpt-6</span><span>~/fun/taskmaster</span>',
-          changes: changes('website/style.css', [':root {','+  --background: #191724;','+  --accent: #ebbcba;','}', '', '.terminal-body {', '+  background: #191724;', '}', '', '.app-window {', '+  aspect-ratio: 16 / 10;', '+  backdrop-filter: blur(16px);', '}'])
+          changes: changes('website/style.css', [':root {','+  --background: #05070c;','+  --accent: #3b82f6;','}', '', '.terminal-body {', '+  background: #05070c;', '}', '', '.app-window {', '+  aspect-ratio: 16 / 10;', '+  backdrop-filter: blur(16px);', '}'])
         };
       }
     },

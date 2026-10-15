@@ -294,7 +294,7 @@ export function shell({ title, description, path, body, extraCss = '', scripts =
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#191724">
+  <meta name="theme-color" content="#05070c">
   <title>${esc(title)}</title>
   <meta name="description" content="${esc(description)}">
   <link rel="canonical" href="${esc(url)}">
