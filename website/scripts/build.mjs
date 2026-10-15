@@ -13,7 +13,7 @@ for (const file of ['style.css', 'docs.css', 'guides.css', 'taskmaster.css']) {
   if (base) css = css.replaceAll("url('/", `url('${base}/`).replaceAll('url("/', `url("${base}/`);
   await writeFile(resolve(dist, file), css);
 }
-for (const file of ['docs.js', 'docs-search.js', 'downloads.js', 'stats.js', 'favicon.svg']) {
+for (const file of ['docs.js', 'docs-search.js', 'downloads.js', 'stats.js', 'app.js', 'agent-previews.js', 'favicon.svg']) {
   await cp(resolve(root, file), resolve(dist, file));
 }
 const outputs = await buildSite();

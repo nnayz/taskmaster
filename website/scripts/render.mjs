@@ -260,9 +260,8 @@ function blockStartLine(line) {
 
 const NAV = [
   ['/#features', 'Features'],
+  ['/docs/playbooks/', 'Guides'],
   ['/docs/', 'Docs'],
-  ['/docs/playbooks/', 'Playbooks'],
-  ['/install/', 'Install'],
 ];
 
 export function header(active = '') {
@@ -288,7 +287,7 @@ export const footer = `<footer class="site-footer">
       </div>
     </footer>`;
 
-export function shell({ title, description, path, body, extraCss = '', scripts = '' }) {
+export function shell({ title, description, path, body, extraCss = '', scripts = '', sky = false }) {
   const url = abs(path);
   return `<!doctype html>
 <html lang="en" data-base="${esc(base)}">
@@ -306,6 +305,7 @@ export function shell({ title, description, path, body, extraCss = '', scripts =
   <meta property="og:image" content="${esc(abs('/assets/preview.png'))}">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="${rootPath('/favicon.svg')}" type="image/svg+xml">
+  <link rel="preload" href="${rootPath('/assets/fonts/geist.woff2')}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="${rootPath('/style.css')}">
   <link rel="stylesheet" href="${rootPath('/docs.css')}">
   <link rel="stylesheet" href="${rootPath('/guides.css')}">
@@ -315,6 +315,7 @@ export function shell({ title, description, path, body, extraCss = '', scripts =
   ${scripts}
 </head>
 <body>
+  ${sky ? '<div class="page-sky" aria-hidden="true"></div>' : ''}
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="site-wrap">
     ${body}

@@ -54,11 +54,12 @@ export async function buildPages(catalog) {
   const outputs = new Map();
   const home = applyTokens(await readFile(resolve(pagesDir, 'home.html'), 'utf8'), latest);
   outputs.set('index.html', shell({
-    title: 'Taskmaster — The command center for coding agents',
-    description: 'Native macOS app for Claude Code, Codex, Cursor, Grok, OpenCode, Gemini, and shells. Real PTYs, live status, and sessions that survive the window.',
+    title: 'Taskmaster — Run coding agents side by side',
+    description: 'Free, open-source Mac app to run Claude Code, Codex, Cursor, and the rest of the catalog side by side. Sessions keep running when you close the window.',
     path: '/',
+    sky: true,
     body: `${header('')}\n${home}`,
-    scripts: `<script type="module" src="${rootPath('/downloads.js')}"></script>`,
+    scripts: `<script src="${rootPath('/agent-previews.js')}" defer></script><script src="${rootPath('/app.js')}" defer></script><script type="module" src="${rootPath('/downloads.js')}"></script>`,
   }));
 
   const install = renderMarkdown(applyTokens(await readFile(resolve(pagesDir, 'install.md'), 'utf8'), latest));

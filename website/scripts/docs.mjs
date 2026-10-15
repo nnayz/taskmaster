@@ -133,7 +133,7 @@ function template({ slug, page, html, toc, group, prev, next, groups, pages }) {
   const path = pageUrl(slug);
   const raw = slug === 'introduction' ? '/docs/index.md' : `/docs/${slug}.md`;
   const title = slug === 'introduction' ? 'Documentation · Taskmaster' : `${page.title} · Taskmaster docs`;
-  const active = slug === 'playbooks' || slug.startsWith('playbooks/') ? 'Playbooks' : 'Docs';
+  const active = slug === 'playbooks' || slug.startsWith('playbooks/') ? 'Guides' : 'Docs';
   const tocHtml = toc.length > 1 ? `<span>On this page</span>${toc.map((item) => `<a href="#${item.id}">${esc(item.text)}</a>`).join('')}` : '';
   const pager = `<nav class="docs-pager" aria-label="Previous and next">${prev ? `<a class="prev" href="${rootPath(pageUrl(prev.slug))}"><span>Previous</span>${esc(prev.title)}</a>` : '<span></span>'}${next ? `<a class="next" href="${rootPath(pageUrl(next.slug))}"><span>Next</span>${esc(next.title)}</a>` : '<span></span>'}</nav>`;
   const body = `${header(active)}

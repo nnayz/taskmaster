@@ -60,14 +60,22 @@ export async function initDownloads(document, fetchRelease) {
   const mac = release?.downloads.find((asset) => asset.primary);
   if (!mac) return;
   primary.href = mac.url;
+  const label = primary.querySelector('.button-label');
+  if (label) label.textContent = 'Download for macOS';
   primary.setAttribute('aria-label', `Download Taskmaster ${release.version} for macOS, universal DMG`);
   const version = document.querySelector('#download-version');
-  if (version) {
-    const notes = version.querySelector('#download-notes');
-    const zip = version.querySelector('#download-zip');
-    if (notes) notes.href = release.notes;
-    const zipAsset = release.downloads.find((asset) => !asset.primary);
-    if (zip && zipAsset) zip.href = zipAsset.url;
+  if (version) version.textContent = `${release.version} · macOS 15+`;
+  const notes = document.querySelector('#download-notes');
+  if (notes) notes.href = release.notes;
+  const assets = document.querySelector('#download-assets');
+  if (assets) {
+    const links = release.downloads.filter((asset) => !asset.primary).map((asset) => {
+      const link = document.createElement('a');
+      link.href = asset.url;
+      link.textContent = asset.label;
+      return link;
+    });
+    assets.replaceChildren(...links);
   }
 }
 
