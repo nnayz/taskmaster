@@ -80,23 +80,44 @@ pub fn helper_protocol_root() -> io::Result<PathBuf> {
     Ok(root)
 }
 
+/// Slack between a socket root and the socket path: `/` plus the 32-hex
+/// session digest plus `.sock`.
+const SOCKET_NAME_BYTES: usize = 38;
+/// macOS caps `sockaddr_un.sun_path` at 104 bytes including the NUL
+/// terminator; keep the whole socket path under this budget with a margin.
+const SOCKET_PATH_BUDGET: usize = 100;
+
+fn socket_root_fits(root: &Path) -> bool {
+    root.as_os_str()
+        .as_bytes()
+        .len()
+        .saturating_add(SOCKET_NAME_BYTES)
+        < SOCKET_PATH_BUDGET
+}
+
 fn runtime_socket_root() -> io::Result<PathBuf> {
-    let fallback = || {
-        std::env::temp_dir().join(format!(
-            "taskmaster-remote-{}",
-            // SAFETY: getuid has no preconditions and does not mutate memory.
-            unsafe { libc::getuid() }
-        ))
-    };
-    let mut root = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .map(|path| path.join("taskmaster"))
-        .unwrap_or_else(fallback);
-    // Leave enough room for slash + 32 hex + `.sock` within macOS SUN_LEN.
-    if root.as_os_str().as_bytes().len().saturating_add(38) >= 100 {
-        root = fallback();
-    }
+    // SAFETY: getuid has no preconditions and does not mutate memory.
+    let uid = unsafe { libc::getuid() };
+    let temp = std::env::temp_dir();
+    // macOS' shadow `TMPDIR` under `/var/folders` leaves little room once the
+    // product name is spelled out, so fall back to a shorter owner-scoped
+    // directory there instead of failing at bind time, mirroring the
+    // short-namespace mapping used for overlong OpenSSH `ControlPath` values.
+    let candidates = [
+        std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .map(|path| path.join("taskmaster")),
+        Some(temp.join(format!("taskmaster-remote-{uid}"))),
+        Some(temp.join(format!("tmr-{uid}"))),
+    ];
+    let root = candidates
+        .into_iter()
+        .flatten()
+        .find(|root| socket_root_fits(root))
+        .ok_or_else(|| {
+            io::Error::other("no runtime directory is short enough for the session socket path")
+        })?;
     ensure_private_dir(&root)?;
     Ok(root)
 }
@@ -294,5 +315,22 @@ mod tests {
         let link = temporary.path().join("link");
         symlink(&outside, &link).expect("symlink");
         assert!(ensure_private_dir(&link).is_err());
+    }
+
+    #[test]
+    fn socket_root_budget_leaves_room_for_the_hashed_socket_name() {
+        assert!(socket_root_fits(Path::new("/run/user/1000/taskmaster")));
+        let long = PathBuf::from(format!("/{}/taskmaster", "x".repeat(72)));
+        assert!(!socket_root_fits(&long));
+    }
+
+    #[test]
+    fn chosen_socket_root_can_bind_a_hashed_socket_name() {
+        let root = runtime_socket_root().expect("socket root");
+        let socket = root.join(format!("{}.sock", "0".repeat(32)));
+        let listener = std::os::unix::net::UnixListener::bind(&socket)
+            .expect("the chosen root must bind within SUN_LEN");
+        drop(listener);
+        let _ = fs::remove_file(&socket);
     }
 }
