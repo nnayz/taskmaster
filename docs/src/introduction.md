@@ -38,7 +38,16 @@ the complete installation flow.
 | [Remote hosts](remote-hosts.md) | SSH machines in Settings → Remote |
 | [Remote nodes](remote-nodes.md) | First-party `zeus-node` on a VPS |
 | [Updates](updates.md) | How auto-update works |
+| [Playbooks](playbooks/parallel-agents-worktrees.md) | Concrete workflows: parallel worktrees, delegation, review, local vs remote, blocked sessions, resources |
 | [Security model](security-model.md) | Trust boundaries |
 | [Privacy](privacy.md) | Local data and network activity |
 | [Support](support.md) | Diagnostics and logs |
 | [Roadmap](roadmap.md) | Product direction |
+
+## This book and the Developer Guide
+
+This is the **User Guide**: how to install, run, and operate Zeus. Building
+Zeus from source, the crate map, agent manifests, protocols, tests, packaging,
+and release engineering are covered separately in the
+[Developer Guide](dev/introduction.html). Content moves between the two guides
+by audience, so links to moved pages continue to work.

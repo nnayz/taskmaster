@@ -51,9 +51,14 @@ Developer ID signing and Apple notarization are in place.
    reopen the app without surrendering the PTYs held by the Engine.
 
 The complete guide is published at [docs.zeus.nasrul.info](https://docs.zeus.nasrul.info).
-It covers the workbench, shortcuts, agent setup, orchestration, fleet patterns,
-remote execution, and removal. To preview that book locally, run
-`mdbook serve docs`.
+That is the **User Guide**: the workbench, shortcuts, agent setup,
+orchestration, fleet patterns, remote execution, playbooks, and removal. Its
+source is [`docs/`](docs/); preview it with `mdbook serve docs`.
+
+Building or maintaining Zeus? The **Developer Guide** covers development
+setup, the crate map, agent manifests, tests, packaging, and releases. Its
+source is [`developer-docs/`](developer-docs/); preview it with
+`mdbook serve developer-docs`.
 
 The monorepo also contains a native SwiftUI iOS Companion at
 [`ios/ZeusCompanion/`](ios/ZeusCompanion/). It connects to the private-network
@@ -98,7 +103,9 @@ The desktop and session machinery are implemented in Rust:
 
 The desktop communicates with the Engine through a versioned protocol; the app
 does not launch SSH on its own. See [`zeus/REMOTE_PORT.md`](zeus/REMOTE_PORT.md)
-for the remote transport's active design constraints.
+for the remote transport's active design constraints. The
+[Developer Guide](developer-docs/) explains how to build and modify these
+pieces.
 
 ## Extending agent support
 
@@ -112,7 +119,9 @@ does not require hard-coding it into the application.
 
 The required Rust version is fixed by
 [`zeus/rust-toolchain.toml`](zeus/rust-toolchain.toml). Expect the initial build
-to take longer because it compiles GPUI from Zeus's pinned Zed revision.
+to take longer because it compiles GPUI from Zeus's pinned Zed revision. The
+[Developer Guide](developer-docs/) walks through prerequisites, development
+builds, previews, and every required check.
 
 ```sh
 (cd zeus && cargo build)                   # compile the workspace
@@ -128,9 +137,11 @@ Run the repository's main CI-equivalent checks with:
 ./scripts/check.sh
 ```
 
-The source for the user guide is in [`docs/`](docs/). Release engineering is
+The source for the User Guide is in [`docs/`](docs/); the Developer Guide
+lives in [`developer-docs/`](developer-docs/). Release engineering is
 documented in [`zeus/PACKAGING.md`](zeus/PACKAGING.md) and
-[`zeus/UPDATING.md`](zeus/UPDATING.md).
+[`zeus/UPDATING.md`](zeus/UPDATING.md), indexed alongside every other
+engineering record in the Developer Guide.
 
 ## Help and policies
 

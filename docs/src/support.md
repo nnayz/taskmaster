@@ -17,6 +17,9 @@ Include with your email:
 - steps to reproduce
 - a small, redacted log excerpt
 
+Building Zeus from source, running tests, or filing a pull request? Start with
+the [Developer Guide](dev/introduction.html) instead.
+
 ## Logs
 
 Daemon logs and session state:

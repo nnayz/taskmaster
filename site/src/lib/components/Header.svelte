@@ -2,7 +2,7 @@
   import { base } from '$app/paths';
   import GitHubStars from '$lib/components/GitHubStars.svelte';
   import Mark from '$lib/components/Mark.svelte';
-  import { DOCS, GITHUB, latestRelease } from '$lib/releases';
+  import { DOCS, DEVELOPER_DOCS, GITHUB, latestRelease } from '$lib/releases';
 
   let { githubStars = null }: { githubStars?: number | null } = $props();
   const latest = latestRelease();
@@ -13,7 +13,8 @@
     <Mark />
   </a>
   <nav class="site-nav">
-    <a href={DOCS} rel="external">Docs</a>
+    <a href={DOCS} rel="external">User Guide</a>
+    <a href={DEVELOPER_DOCS} rel="external" class="nav-wide">Developer Guide</a>
     <a href="{base}/releases/">Releases</a>
     <a href="{base}/security/" class="nav-wide">Security</a>
     <a href={GITHUB} rel="external">GitHub</a>

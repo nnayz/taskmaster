@@ -24,8 +24,9 @@ V1 is command-oriented: read-only full screen snapshots and selected commands
 with explicit controller takeover. Raw mobile resize, signal, PTY bytes and
 terminal diffs are excluded. The PWA prototype lives at
 `prototypes/companion-web` in this repository. Rust gateway/API/reference-client
-code lives under `zeus/`. Native iOS lives in a separate repository, consuming
-external schemas and fixtures; no Swift enters this repository or runtime.
+code lives under `zeus/`. The native SwiftUI client lives at
+`ios/ZeusCompanion/` and consumes the versioned external HTTPS API; Swift stays
+a client and never enters the Engine, Holder, or remote-helper runtime.
 
 ## Authority and data flow
 
@@ -57,7 +58,7 @@ Declaring `ClientRole::Mobile` alone is not an authorization boundary.
 never receive Holder tokens, access the Engine Unix socket, attach to a Holder,
 or invoke SSH. `zeus-remote` gains no mobile behavior. `zeus-node` keeps its
 separate enhanced-node/account/usage/handoff boundary and is not the gateway
-or a bootstrap dependency. The [security model](security-model.md) still applies.
+or a bootstrap dependency. The [User Guide security model](../security-model.html) still applies.
 
 ## Lifecycle decision and verification gates
 

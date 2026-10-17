@@ -84,7 +84,9 @@ zeus session wait <id> --until done --timeout 1200
 zeus session read <id> --source output --lines 80
 ```
 
-See [Command line](cli.md).
+See [Command line](cli.md). The bridge itself — how the MCP overlay is
+injected, the hooks, and the server binary — is documented in the Developer
+Guide: [MCP, hooks, and automation](dev/mcp-and-hooks.html).
 
 ## What not to do
 

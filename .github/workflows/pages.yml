@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "developer-docs/**"
       - "site/**"
+      - "scripts/check-docs-links.py"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "docs/**"
+      - "developer-docs/**"
       - "site/**"
+      - "scripts/check-docs-links.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -68,15 +72,25 @@ jobs:
           MDBOOK_OUTPUT__HTML__SITE_URL: ${{ steps.pages.outputs.base_path }}/docs/
         run: mdbook build docs
 
+      - name: Build developer docs
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: ${{ steps.pages.outputs.base_path }}/docs/dev/
+        run: mdbook build developer-docs
+
       - name: Assemble Pages artifact
         run: |
           set -euo pipefail
-          mkdir -p site/build/docs
+          mkdir -p site/build/docs/dev
           cp -R docs/book/. site/build/docs/
+          cp -R developer-docs/book/. site/build/docs/dev/
           touch site/build/.nojekyll
           test -f site/build/index.html
           test -f site/build/docs/index.html
+          test -f site/build/docs/dev/index.html
           test -f site/build/preview.png
+
+      - name: Check documentation links and assets
+        run: python3 scripts/check-docs-links.py --site-build site/build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

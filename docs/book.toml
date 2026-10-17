@@ -1,6 +1,6 @@
 [book]
-title = "Zeus"
-description = "Native macOS orchestrator for coding agents"
+title = "Zeus User Guide"
+description = "Install and operate Zeus: sessions, worktrees, orchestration, and remote execution"
 authors = ["Nasrul Huda"]
 language = "en"
 src = "src"

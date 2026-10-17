@@ -52,5 +52,7 @@ Staging lives under:
 If the app sits somewhere the user cannot write, the writability check fails
 *before* the download starts.
 
-Release packaging steps live in [`zeus/UPDATING.md`](https://github.com/nnayz/zeus/blob/main/zeus/UPDATING.md)
-in the repository.
+Release packaging and updater implementation live in
+[`zeus/UPDATING.md`](https://github.com/nnayz/zeus/blob/main/zeus/UPDATING.md);
+the Developer Guide collects that alongside the rest of the engineering
+documents in [Releases and updates](dev/releases-and-updates.html).
