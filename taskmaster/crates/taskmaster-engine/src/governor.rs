@@ -178,7 +178,12 @@ fn sweep(
     if config.idle_threshold_seconds > 0.0 {
         for (id, idle_since, _) in &idle_candidates {
             if (now_ms - idle_since) / 1000.0 > config.idle_threshold_seconds {
-                let _ = hibernate(registry, events, id, taskmaster_proto::HibernationReason::Idle);
+                let _ = hibernate(
+                    registry,
+                    events,
+                    id,
+                    taskmaster_proto::HibernationReason::Idle,
+                );
             }
         }
     }
@@ -225,7 +230,11 @@ fn apply_sample(
         if event.artifacts.is_some() {
             pr_monitor_wake.wake_session(id.to_owned());
         }
-        events.publish_encoded(taskmaster_proto::EventName::SESSION_RESOURCES, &event, Some(id));
+        events.publish_encoded(
+            taskmaster_proto::EventName::SESSION_RESOURCES,
+            &event,
+            Some(id),
+        );
     }
 }
 
@@ -244,7 +253,11 @@ fn hibernate(
         guard.records().into_iter().find(|record| record.id.0 == id)
     };
     if let Some(record) = record {
-        events.publish_encoded(taskmaster_proto::EventName::SESSION_UPDATED, &record, Some(id));
+        events.publish_encoded(
+            taskmaster_proto::EventName::SESSION_UPDATED,
+            &record,
+            Some(id),
+        );
     }
     Ok(())
 }

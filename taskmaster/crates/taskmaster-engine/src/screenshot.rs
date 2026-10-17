@@ -450,7 +450,10 @@ fn resolve_target<'a>(
         .filter(|target| {
             target.kind == TargetKind::Window
                 && target.on_screen
-                && target.owner_bundle.as_deref().is_some_and(is_taskmaster_bundle)
+                && target
+                    .owner_bundle
+                    .as_deref()
+                    .is_some_and(is_taskmaster_bundle)
         })
         .collect();
     let target = match candidates.as_slice() {
@@ -757,7 +760,12 @@ mod tests {
             targets: vec![
                 target(TargetKind::Display, 9, "Main Display", None),
                 target(TargetKind::Window, 10, "Other", Some("com.example.other")),
-                target(TargetKind::Window, 11, "Taskmaster", Some("com.taskmaster.taskmaster")),
+                target(
+                    TargetKind::Window,
+                    11,
+                    "Taskmaster",
+                    Some("com.taskmaster.taskmaster"),
+                ),
             ],
             frame: Some(RawFrame {
                 width: 2,

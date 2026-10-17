@@ -97,9 +97,9 @@ async fn run() -> io::Result<()> {
                     .to_owned(),
             };
             auth.server_id()?;
-            let client = Arc::new(taskmaster_client::DaemonClient::for_companion(PathBuf::from(
-                &args[2],
-            )));
+            let client = Arc::new(taskmaster_client::DaemonClient::for_companion(
+                PathBuf::from(&args[2]),
+            ));
             client.connect();
             client
                 .wait_until_connected(Duration::from_secs(10))

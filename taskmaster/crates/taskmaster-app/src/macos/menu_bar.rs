@@ -18,7 +18,9 @@ use objc2_foundation::{
     MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
 };
 
-use taskmaster_proto::{AgentKind, AttentionLevel, RiskHint, SessionId, SessionRecord, SessionStatus};
+use taskmaster_proto::{
+    AgentKind, AttentionLevel, RiskHint, SessionId, SessionRecord, SessionStatus,
+};
 
 use crate::store::{SessionStore, StoreSnapshot};
 

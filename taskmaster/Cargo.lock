@@ -6536,6 +6536,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "taskmaster-power"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.4",
+ "sha2 0.11.0",
+ "tempfile",
+]
+
+[[package]]
+name = "taskmaster-power-helper"
+version = "0.1.0"
+dependencies = [
+ "plist",
+ "taskmaster-power",
+]
+
+[[package]]
 name = "taskmaster-proto"
 version = "0.3.0"
 dependencies = [

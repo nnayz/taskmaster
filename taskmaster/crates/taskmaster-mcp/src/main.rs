@@ -29,8 +29,8 @@ impl ProcessBackend {
             })
             .or_else(|| {
                 env::var_os("HOME").and_then(|home| {
-                    let path =
-                        PathBuf::from(home).join("Library/Application Support/Taskmaster/bin/taskmaster");
+                    let path = PathBuf::from(home)
+                        .join("Library/Application Support/Taskmaster/bin/taskmaster");
                     is_executable(&path).then_some(path)
                 })
             })

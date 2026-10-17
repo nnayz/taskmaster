@@ -360,7 +360,11 @@ fn sweep(
             }
         };
         if let Some(record) = record {
-            events.publish_encoded(taskmaster_proto::EventName::SESSION_UPDATED, &record, Some(&id));
+            events.publish_encoded(
+                taskmaster_proto::EventName::SESSION_UPDATED,
+                &record,
+                Some(&id),
+            );
         }
     }
 

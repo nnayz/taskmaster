@@ -1048,7 +1048,8 @@ mod tests {
                 .all(|helper| helper.build_id == first.build_id)
         );
         assert_eq!(first.build_id, "test-build");
-        let final_path = remote_home.join(".cache/taskmaster/bin/protocol-1/test-build/taskmaster-remote");
+        let final_path =
+            remote_home.join(".cache/taskmaster/bin/protocol-1/test-build/taskmaster-remote");
         assert!(final_path.is_file());
         let second = manager.ensure_helper(&host).expect("idempotent bootstrap");
         assert_eq!(second.build_id, first.build_id);

@@ -1,10 +1,10 @@
 use std::path::Path;
 use std::time::Duration;
 
-use tokio::task::JoinSet;
 use taskmaster_client::NodeClient;
 use taskmaster_proto::paths::TaskmasterPaths;
 use taskmaster_proto::{HostsConfig, ProviderKind, UsageQueryParams};
+use tokio::task::JoinSet;
 
 use super::{Clock, ProviderUsage, SystemClock, UsageSnapshot, UsageTotals};
 

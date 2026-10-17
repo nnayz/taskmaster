@@ -139,7 +139,10 @@ impl Http {
         config.push_str(&format!("max-time = {timeout_seconds}\n"));
         config.push_str("connect-timeout = 15\n");
         config.push_str("max-redirs = 5\n");
-        config.push_str(&format!("user-agent = \"taskmaster-updater/{}\"\n", crate::AGENT));
+        config.push_str(&format!(
+            "user-agent = \"taskmaster-updater/{}\"\n",
+            crate::AGENT
+        ));
         if let Some(path) = output {
             config.push_str(&format!("output = \"{}\"\n", path.display()));
         }
@@ -223,7 +226,10 @@ mod tests {
 
     #[test]
     fn accepts_a_release_url_on_the_pinned_host() {
-        assert!(validated_download_url("https://github.com/taskmaster/taskmaster-0.2.0.zip", HOST).is_ok());
+        assert!(
+            validated_download_url("https://github.com/taskmaster/taskmaster-0.2.0.zip", HOST)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -235,7 +241,9 @@ mod tests {
 
     #[test]
     fn rejects_userinfo_that_would_fake_the_host() {
-        assert!(validated_download_url("https://github.com@evil.test/taskmaster.zip", HOST).is_err());
+        assert!(
+            validated_download_url("https://github.com@evil.test/taskmaster.zip", HOST).is_err()
+        );
     }
 
     #[test]

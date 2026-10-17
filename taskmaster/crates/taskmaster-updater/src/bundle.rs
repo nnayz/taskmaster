@@ -79,14 +79,19 @@ mod tests {
 
     #[test]
     fn finds_the_app_above_a_bundled_executable() {
-        let bundle = enclosing_bundle(Path::new("/Applications/taskmaster.app/Contents/MacOS/taskmaster"));
+        let bundle = enclosing_bundle(Path::new(
+            "/Applications/taskmaster.app/Contents/MacOS/taskmaster",
+        ));
         assert_eq!(bundle, Some(PathBuf::from("/Applications/taskmaster.app")));
     }
 
     #[test]
     fn a_bare_binary_has_no_bundle() {
         assert!(
-            enclosing_bundle(Path::new("/Users/giga/fun/taskmaster/taskmaster/target/debug/taskmaster")).is_none()
+            enclosing_bundle(Path::new(
+                "/Users/giga/fun/taskmaster/taskmaster/target/debug/taskmaster"
+            ))
+            .is_none()
         );
         assert!(enclosing_bundle(Path::new("/usr/local/bin/taskmaster")).is_none());
         // Right depth, wrong layout.

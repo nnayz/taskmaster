@@ -3,12 +3,12 @@ use futures::{SinkExt, StreamExt};
 use reqwest::{Method, StatusCode};
 use serde::{Serialize, de::DeserializeOwned};
 use std::time::Duration;
+use taskmaster_companion_api::*;
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
     tungstenite::{Message, protocol::WebSocketConfig},
 };
 use zeroize::Zeroizing;
-use taskmaster_companion_api::*;
 
 const DEADLINE: Duration = Duration::from_secs(10);
 #[derive(Clone, Debug, Eq, PartialEq)]

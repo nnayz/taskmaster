@@ -194,7 +194,8 @@ pub fn reach_failure_transition() -> StatusTransition {
                     .map_or(0, |duration| duration.as_nanos())
             ),
             title: "Couldn't reach session".to_owned(),
-            body: "Taskmaster couldn't deliver your answer. Open the session to respond.".to_owned(),
+            body: "Taskmaster couldn't deliver your answer. Open the session to respond."
+                .to_owned(),
             thread_identifier: None,
             action_data: None,
             use_system_sound: true,

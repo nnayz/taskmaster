@@ -22,7 +22,9 @@ use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Processor, Rgb};
 use taskmaster_proto::frames::TerminalModes;
-use taskmaster_proto::grid::{ChangedRow, GridCell, GridRowCodec, GridUpdate, TermColor, TermStyle};
+use taskmaster_proto::grid::{
+    ChangedRow, GridCell, GridRowCodec, GridUpdate, TermColor, TermStyle,
+};
 
 /// Receiver-side authority for a remote terminal stream. A mirror accepts a
 /// full snapshot as a new baseline and then only contiguous sequenced diffs;

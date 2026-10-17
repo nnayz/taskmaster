@@ -725,7 +725,10 @@ mod tests {
             .find(|arg| arg.starts_with("mcp_servers.taskmaster.args="))
             .cloned()
             .unwrap_or_default();
-        assert!(encoded.contains("TASKMASTER_SESSION_ID=s_parent"), "{encoded}");
+        assert!(
+            encoded.contains("TASKMASTER_SESSION_ID=s_parent"),
+            "{encoded}"
+        );
         assert!(
             encoded.contains(&format!("TASKMASTER_SOCKET={}", socket.display())),
             "{encoded}"
@@ -771,7 +774,10 @@ mod tests {
             .expect("GROK_CONFIG_PATH");
         let grok_json: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&grok).expect("read grok")).expect("json");
-        assert_eq!(grok_json["mcp_servers"]["taskmaster"]["command"], "/usr/bin/env");
+        assert_eq!(
+            grok_json["mcp_servers"]["taskmaster"]["command"],
+            "/usr/bin/env"
+        );
         assert_eq!(
             grok_json["mcp_servers"]["taskmaster"]["args"][0],
             "TASKMASTER_SESSION_ID=s_host"
@@ -786,7 +792,10 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&opencode).expect("read opencode"))
                 .expect("json");
         assert_eq!(opencode_json["mcp"]["taskmaster"]["enabled"], true);
-        assert_eq!(opencode_json["mcp"]["taskmaster"]["command"][0], "/usr/bin/env");
+        assert_eq!(
+            opencode_json["mcp"]["taskmaster"]["command"][0],
+            "/usr/bin/env"
+        );
         assert_eq!(opencode_json["permission"]["task"], "deny");
         let opencode_policy = opencode_json["instructions"][0]
             .as_str()
@@ -806,7 +815,10 @@ mod tests {
         )
         .expect("json");
         assert_eq!(settings["theme"], "dark");
-        assert_eq!(settings["mcpServers"]["taskmaster"]["command"], "/usr/bin/env");
+        assert_eq!(
+            settings["mcpServers"]["taskmaster"]["command"],
+            "/usr/bin/env"
+        );
         assert!(
             Path::new(&gemini).join("oauth.json").exists(),
             "user auth files are linked into the session home"
@@ -870,7 +882,9 @@ mod tests {
             serde_json::from_slice(&std::fs::read(plugin.join("mcp.json")).expect("mcp.json"))
                 .expect("json");
         assert_eq!(mcp["mcpServers"]["taskmaster"]["command"], "/usr/bin/env");
-        let mcp_args = mcp["mcpServers"]["taskmaster"]["args"].as_array().expect("args");
+        let mcp_args = mcp["mcpServers"]["taskmaster"]["args"]
+            .as_array()
+            .expect("args");
         assert_eq!(mcp_args[0], "TASKMASTER_SESSION_ID=s_test");
         assert!(
             mcp_args

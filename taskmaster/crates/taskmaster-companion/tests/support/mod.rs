@@ -7,7 +7,6 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::watch;
 use taskmaster_client::DaemonClient;
 use taskmaster_companion::{
     auth::{AuthStore, now_ms},
@@ -17,6 +16,7 @@ use taskmaster_companion::{
 use taskmaster_companion_api::{PairRequest, PairResponse, Scope};
 use taskmaster_companion_client::Client;
 use taskmaster_engine::{control::ControlServer, detect::ManifestEngine, registry::Registry};
+use tokio::sync::watch;
 
 pub struct Fixture {
     pub temp: tempfile::TempDir,
@@ -39,9 +39,10 @@ pub struct Fixture {
 impl Fixture {
     pub async fn new() -> Self {
         let temp = tempfile::tempdir_in(std::fs::canonicalize("/tmp").unwrap()).unwrap();
-        let manifests = ManifestEngine::load_dir(&taskmaster_engine::detect::bundled_manifest_dir())
-            .unwrap()
-            .0;
+        let manifests =
+            ManifestEngine::load_dir(&taskmaster_engine::detect::bundled_manifest_dir())
+                .unwrap()
+                .0;
         let registry = Arc::new(Mutex::new(Registry::new(
             Arc::new(manifests),
             temp.path().join("state.json"),

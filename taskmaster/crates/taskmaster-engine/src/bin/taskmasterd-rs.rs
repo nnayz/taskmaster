@@ -72,7 +72,10 @@ fn main() {
         .truncate(false)
         .open(&lock_path)
         .unwrap_or_else(|error| {
-            eprintln!("taskmasterd-rs: cannot open {}: {error}", lock_path.display());
+            eprintln!(
+                "taskmasterd-rs: cannot open {}: {error}",
+                lock_path.display()
+            );
             std::process::exit(1);
         });
     // SAFETY: flock on an owned fd; non-blocking probe.
@@ -343,7 +346,8 @@ fn anonymous_capture_file() -> std::io::Result<std::fs::File> {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
-        let path = std::env::temp_dir().join(format!("taskmaster-path-{}-{suffix}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("taskmaster-path-{}-{suffix}", std::process::id()));
         match std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -517,8 +521,9 @@ fn cli_manifest_sources(exe_dir: &Path) -> Vec<PathBuf> {
         sources.push(workspace.join("crates/taskmaster-engine/manifests"));
     }
     if let Ok(home) = std::env::var("HOME") {
-        sources
-            .push(Path::new(&home).join("Applications/taskmaster.app/Contents/Resources/bin/manifests"));
+        sources.push(
+            Path::new(&home).join("Applications/taskmaster.app/Contents/Resources/bin/manifests"),
+        );
     }
     sources.push(PathBuf::from(
         "/Applications/taskmaster.app/Contents/Resources/bin/manifests",

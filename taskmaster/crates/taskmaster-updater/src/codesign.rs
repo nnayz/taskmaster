@@ -190,7 +190,10 @@ TeamIdentifier=not set
     #[test]
     fn parses_a_developer_id_signature() {
         let info = SignatureInfo::parse(DEVELOPER_ID);
-        assert_eq!(info.identifier.as_deref(), Some("com.taskmaster.taskmaster"));
+        assert_eq!(
+            info.identifier.as_deref(),
+            Some("com.taskmaster.taskmaster")
+        );
         assert_eq!(info.team_identifier.as_deref(), Some("AH8WARWU6L"));
         assert_eq!(info.authorities.len(), 3);
         assert!(info.is_developer_id());
@@ -243,6 +246,13 @@ TeamIdentifier=not set
             team_identifier: Some("AH8WARWU6L".to_owned()),
             authorities: vec!["Apple Development: Nasrul Huda (ABCDE12345)".to_owned()],
         };
-        assert!(check_identity(&apple_development, "AH8WARWU6L", Some("com.taskmaster.taskmaster")).is_err());
+        assert!(
+            check_identity(
+                &apple_development,
+                "AH8WARWU6L",
+                Some("com.taskmaster.taskmaster")
+            )
+            .is_err()
+        );
     }
 }

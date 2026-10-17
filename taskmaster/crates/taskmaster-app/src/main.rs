@@ -62,9 +62,9 @@ use gpui::{
 use gpui_platform::application;
 use root::RootView;
 use sidebar::{PreviewScenario, SidebarPreviewFixture};
+use taskmaster_client::DaemonClient;
 use terminal_pane::bind_terminal_keys;
 use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
-use taskmaster_client::DaemonClient;
 
 use crate::store::{StoreRuntime, WindowMode, WindowPlacement};
 use crate::updates::UpdateHandle;
@@ -208,7 +208,8 @@ fn main() {
         Arc::new(if preview {
             StoreRuntime::preview_from(SidebarPreviewFixture::make(scenario).into_store())
         } else {
-            StoreRuntime::start_default(Arc::clone(&client)).expect("failed to load taskmaster state")
+            StoreRuntime::start_default(Arc::clone(&client))
+                .expect("failed to load taskmaster state")
         })
     };
     let (usage_tx, _) = tokio::sync::watch::channel(UsageSnapshot::default());
@@ -345,7 +346,9 @@ fn main() {
                 if release_owned_daemon
                     && let Err(error) = quit_store.client().shutdown_daemon_if_idle().await
                 {
-                    eprintln!("taskmaster: could not release the idle Engine while quitting: {error}");
+                    eprintln!(
+                        "taskmaster: could not release the idle Engine while quitting: {error}"
+                    );
                 }
                 quit_store.shutdown().await;
             }

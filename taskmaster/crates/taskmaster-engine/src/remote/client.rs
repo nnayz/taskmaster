@@ -44,7 +44,8 @@ pub struct RemoteSessionClient {
     observed_output_offset: AtomicU64,
     persisted_output_offset: AtomicU64,
     next_request_id: AtomicU64,
-    scrollback_requests: Mutex<HashMap<u64, mpsc::Sender<taskmaster_proto::ReadScrollbackCellsResult>>>,
+    scrollback_requests:
+        Mutex<HashMap<u64, mpsc::Sender<taskmaster_proto::ReadScrollbackCellsResult>>>,
 }
 
 impl RemoteSessionClient {

@@ -98,7 +98,10 @@ impl HolderLauncher {
             .ok()
             .and_then(|exe| exe.canonicalize().ok())
             .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        let candidates: Vec<PathBuf> = beside.iter().map(|dir| dir.join("taskmaster-holder")).collect();
+        let candidates: Vec<PathBuf> = beside
+            .iter()
+            .map(|dir| dir.join("taskmaster-holder"))
+            .collect();
         candidates
             .iter()
             .find(|candidate| is_executable(candidate))

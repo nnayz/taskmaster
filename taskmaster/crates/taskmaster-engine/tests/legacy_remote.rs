@@ -394,7 +394,7 @@ fn only_the_exact_pane_taskmaster_named_is_killed() {
             "taskmaster-4b99600f",       // ours: a record points at it
             "taskmaster-4b99600f-extra", // a prefix collision — tmux would match this
             "taskmaster-aabbccdd",       // taskmaster-shaped, but no record accounts for it
-            "work",                // somebody's own session
+            "work",                      // somebody's own session
         ]),
     );
     let world = World::new(
@@ -413,7 +413,10 @@ fn only_the_exact_pane_taskmaster_named_is_killed() {
         "taskmaster-4b99600f",
         "the recovered convention truncates the id; it does not hash it"
     );
-    assert_eq!(outcome.panes_killed, vec!["taskmaster-4b99600f".to_string()]);
+    assert_eq!(
+        outcome.panes_killed,
+        vec!["taskmaster-4b99600f".to_string()]
+    );
 
     // What actually crossed the wire.
     let ssh_log = fake.ssh_log();
@@ -477,8 +480,10 @@ fn an_unreachable_host_keeps_the_record_the_log_and_the_retry() {
         None
     };
 
-    let first =
-        taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(&world.plan(), &unreachable);
+    let first = taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(
+        &world.plan(),
+        &unreachable,
+    );
     assert_eq!(first.migrated, vec!["s_4b99600fd4f1".to_string()]);
     assert_eq!(
         first.panes_deferred,
@@ -496,18 +501,25 @@ fn an_unreachable_host_keeps_the_record_the_log_and_the_retry() {
     assert!(world.log_exists("s_4b99600fd4f1"), "the log survives");
 
     // Later launches keep trying the pane, but never rewrite the record again.
-    let second =
-        taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(&world.plan(), &unreachable);
+    let second = taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(
+        &world.plan(),
+        &unreachable,
+    );
     assert!(second.migrated.is_empty(), "the local half is exactly once");
-    assert_eq!(second.panes_deferred, vec!["taskmaster-4b99600f".to_string()]);
+    assert_eq!(
+        second.panes_deferred,
+        vec!["taskmaster-4b99600f".to_string()]
+    );
     assert_eq!(attempts.load(Ordering::SeqCst), 2, "it retried");
 
     // ...and eventually stops, so a decommissioned host is not an ssh connect
     // timeout on every launch forever.
     let mut last = second;
     for _ in 0..8 {
-        last =
-            taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(&world.plan(), &unreachable);
+        last = taskmaster_engine::legacy_remote::retire_legacy_remote_sessions(
+            &world.plan(),
+            &unreachable,
+        );
     }
     assert!(
         last.panes_deferred.is_empty() && last.panes_given_up.is_empty(),
@@ -610,7 +622,8 @@ fn a_record_with_a_live_binding_is_untouched() {
         "a Holder-owned session must keep its live status"
     );
     assert!(
-        fake.live_sessions().contains(&"taskmaster-4b99600f".to_string()),
+        fake.live_sessions()
+            .contains(&"taskmaster-4b99600f".to_string()),
         "and nothing on the host may be touched"
     );
 }

@@ -79,7 +79,8 @@ impl AttachHub {
         writer: Arc<Mutex<UnixStream>>,
     ) {
         let session_id = &request.attach.0;
-        let controlled = request.control_protocol == Some(taskmaster_proto::terminal::TERMINAL_PROTOCOL);
+        let controlled =
+            request.control_protocol == Some(taskmaster_proto::terminal::TERMINAL_PROTOCOL);
         if request.role != ClientRole::Desktop || request.control_protocol.is_some() && !controlled
         {
             return;

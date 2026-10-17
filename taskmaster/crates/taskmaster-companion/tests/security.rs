@@ -248,9 +248,13 @@ fn cli_init_validates_before_creation_and_supports_separate_safe_enrollment_outp
         )
         .unwrap();
     assert_eq!(
-        auth.authenticate(&paired.token, Scope::Read, taskmaster_companion::auth::now_ms())
-            .unwrap()
-            .name,
+        auth.authenticate(
+            &paired.token,
+            Scope::Read,
+            taskmaster_companion::auth::now_ms()
+        )
+        .unwrap()
+        .name,
         "../outside"
     );
     assert!(!temp.path().join("outside").exists());

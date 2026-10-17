@@ -9,6 +9,8 @@ members = [
     "crates/taskmaster-engine",
     "crates/taskmaster-node",
     "crates/taskmaster-mcp",
+    "crates/taskmaster-power",
+    "crates/taskmaster-power-helper",
     "crates/taskmaster-proto",
     "crates/taskmaster-pty",
     "crates/taskmaster-remote",

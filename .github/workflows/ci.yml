@@ -58,11 +58,41 @@ jobs:
         run: |
           bash taskmaster/scripts/test-publish-github-release.sh
           bash taskmaster/scripts/test-publish-homebrew-cask.sh
+      - name: Test optional power helper package guard
+        run: bash taskmaster/scripts/check-power-helper-package.sh --self-test
       - name: Install and audit browser sidecar
         working-directory: sidecar
         run: |
           npm ci
           npm audit --omit=dev
+
+  closed-lid-safety:
+    name: Closed-lid mock safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: taskmaster
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.0
+      - name: Cache focused Rust dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            taskmaster/target
+          key: ${{ runner.os }}-closed-lid-${{ hashFiles('taskmaster/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-closed-lid-
+      - name: Enforce mock-only source boundary and test power policy
+        run: cargo test --locked -p taskmaster-power
+      - name: Test exact Holder execution identity on Linux
+        run: |
+          cargo test --locked -p taskmaster-engine holder::protocol::tests --lib
+          cargo test --locked -p taskmaster-engine holder::process_tree::tests --lib
+          cargo test --locked -p taskmaster-engine --test holder --test holder_session --test deferred --test session
+      - name: Test fail-closed optional package validation
+        run: bash scripts/check-power-helper-package.sh --self-test
 
   app:
     name: Rust app (taskmaster)
@@ -227,6 +257,33 @@ jobs:
         env:
           TASKMASTER_DIST_DIR: ${{ runner.temp }}/taskmaster-dist
         run: taskmaster/scripts/package.sh
+      - name: Verify inert power helper scaffold remains unavailable
+        run: |
+          app="${RUNNER_TEMP}/taskmaster-dist/taskmaster.app"
+          helper="${app}/Contents/Library/HelperTools/com.taskmaster.taskmaster.power-helper"
+          test -f "${helper}"
+          test ! -L "${helper}"
+          test -x "${helper}"
+          lipo "${helper}" -verify_arch arm64
+          lipo "${helper}" -verify_arch x86_64
+
+          set +e
+          helper_output="$("${helper}" 2>&1)"
+          helper_status=$?
+          set -e
+          printf '%s\n' "${helper_output}"
+          test "${helper_status}" -eq 78
+          grep -Fq 'power_helper_unavailable' <<<"${helper_output}"
+
+          # The unsigned package job uses an ad-hoc signature. It must package
+          # the exact inert scaffold, but the signed release checker must still
+          # reject it rather than treating an ad-hoc bundle as production-valid.
+          set +e
+          checker_output="$(taskmaster/scripts/check-power-helper-package.sh "${app}" 2>&1)"
+          checker_status=$?
+          set -e
+          printf '%s\n' "${checker_output}"
+          test "${checker_status}" -ne 0
       - name: Verify bundle structure and signature
         run: |
           app="${RUNNER_TEMP}/taskmaster-dist/taskmaster.app"

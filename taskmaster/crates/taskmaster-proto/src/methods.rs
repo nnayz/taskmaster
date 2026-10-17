@@ -1147,7 +1147,10 @@ pub struct EventsWaitResult {
 #[serde(rename_all = "camelCase")]
 pub struct HookReportParams {
     pub kind: String,
-    #[serde(rename = "taskmasterSessionID", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "taskmasterSessionID",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub taskmaster_session_id: Option<SessionId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event: Option<String>,

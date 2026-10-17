@@ -370,7 +370,9 @@ mod tests {
     #[test]
     fn screenshot_permission_denial_is_an_mcp_error_with_its_code() {
         let host = RecordingHost {
-            fail_with: Some("screen_recording_denied: enable Screen Recording for Taskmaster".into()),
+            fail_with: Some(
+                "screen_recording_denied: enable Screen Recording for Taskmaster".into(),
+            ),
             ..Default::default()
         };
         let server = McpServer::new(tool_definitions(), host);

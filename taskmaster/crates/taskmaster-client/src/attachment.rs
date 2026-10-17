@@ -13,11 +13,6 @@ use std::time::Duration;
 
 use futures_core::Stream;
 use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::UnixStream;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time::{Instant, MissedTickBehavior};
 use taskmaster_proto::frames::{Frame, FrameCodec, FrameType, TerminalModes};
 use taskmaster_proto::grid::GridUpdate;
 use taskmaster_proto::methods::{AttachRequest, ClientRole};
@@ -25,6 +20,11 @@ use taskmaster_proto::model::SessionId;
 use taskmaster_proto::terminal::{
     AttachmentAction, AttachmentControlState, ControlEpoch, ControlledFrame,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::time::{Instant, MissedTickBehavior};
 
 const READ_BUFFER_BYTES: usize = 64 * 1024;
 const KEEPALIVE_CHECK_EVERY: Duration = Duration::from_secs(5);
@@ -498,10 +498,6 @@ mod tests {
 
     use serde::Serialize;
     use serde::de::DeserializeOwned;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::UnixStream;
-    use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-    use tokio::time::timeout;
     use taskmaster_proto::control::{ControlMessage, decode_line, encode_line};
     use taskmaster_proto::grid::GridCell;
     use taskmaster_proto::methods::{
@@ -509,6 +505,10 @@ mod tests {
     };
     use taskmaster_proto::model::{AgentKind, SessionId, SessionRecord};
     use taskmaster_proto::paths::{TaskmasterEnv, TaskmasterPaths};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::UnixStream;
+    use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+    use tokio::time::timeout;
 
     use super::{SessionAttachment, TerminalChunk};
 
@@ -659,7 +659,10 @@ mod tests {
                 next_id: 1,
             };
             let _: HelloResult = control
-                .request(Method::HELLO, &HelloParams::new("taskmaster-t4-integration"))
+                .request(
+                    Method::HELLO,
+                    &HelloParams::new("taskmaster-t4-integration"),
+                )
                 .await?;
             Ok(control)
         }
@@ -749,7 +752,9 @@ mod tests {
             return Ok(());
         }
 
-        let scratch = tempfile::Builder::new().prefix("taskmaster-t4-").tempdir()?;
+        let scratch = tempfile::Builder::new()
+            .prefix("taskmaster-t4-")
+            .tempdir()?;
         let mut control = TestControl::connect(&socket).await?;
         let spawn = SessionSpawnParams {
             kind: AgentKind::SHELL,

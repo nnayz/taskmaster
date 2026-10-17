@@ -10,13 +10,13 @@ use gpui::{
     IntoElement, KeyDownEvent, MouseButton, Pixels, Render, Rgba, SharedString, Task, TextRun,
     Window, actions, canvas, deferred, div, font, prelude::*, px, rgba,
 };
-use tokio::runtime::Runtime;
 use taskmaster_proto::{AgentKind as ProtoAgentKind, HistoryEntry, HostEntry, HostsConfig};
 use taskmaster_term::theme::{TermTheme, ThemeAppearance};
 use taskmaster_ui::{
     AgentLogo, Fill, FloatingSurface, HairlineDivider, Ink, LoadingIndicator, Metrics, Palette,
     Radius, SemanticColors, Space, Typo,
 };
+use tokio::runtime::Runtime;
 
 use crate::macos::sf_symbols::{SymbolWeight, sf_symbol, sf_symbol_weighted};
 use crate::navigation::query_label;
@@ -1498,7 +1498,10 @@ impl UtilitySurfaces {
                                     div()
                                         .text_size(px(Typo::META.size))
                                         .text_color(colors.tertiary)
-                                        .child(format!("taskmaster {}", crate::updates::CURRENT_VERSION)),
+                                        .child(format!(
+                                            "taskmaster {}",
+                                            crate::updates::CURRENT_VERSION
+                                        )),
                                 )
                                 .child(
                                     div()
@@ -2382,7 +2385,9 @@ impl UtilitySurfaces {
                 ..
             } => {
                 let persistence = match result.persistence {
-                    taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach => "native detach",
+                    taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach => {
+                        "native detach"
+                    }
                     taskmaster_proto::remote_pty::PersistenceCapability::UserSupervisor => {
                         "user supervisor"
                     }
@@ -3976,7 +3981,8 @@ mod tests {
                     result: taskmaster_proto::HostInitializeResult {
                         helper_build_id: "test-build".into(),
                         protocol: taskmaster_proto::remote_pty::ProtocolVersion::CURRENT,
-                        persistence: taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach,
+                        persistence:
+                            taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach,
                         cwd: "/Users/remote".into(),
                         shell: "/bin/zsh".into(),
                     },

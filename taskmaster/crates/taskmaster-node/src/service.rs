@@ -3,7 +3,6 @@ use std::sync::Arc;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::json;
-use tokio::sync::Mutex;
 use taskmaster_proto::control::JsonValue;
 use taskmaster_proto::{
     AccountLoginStartParams, AccountProfileParams, AccountSetDefaultParams, BlobHasParams,
@@ -12,6 +11,7 @@ use taskmaster_proto::{
     MoveCommitParams, NodeCapability, NodeHelloResult, NodeMethod, NodeStatusResult,
     ProviderCallParams, UsageQueryParams, UsageRecordParams,
 };
+use tokio::sync::Mutex;
 
 use crate::NODE_BUILD;
 use crate::accounts::{AccountStore, now_seconds};

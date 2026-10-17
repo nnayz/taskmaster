@@ -432,7 +432,8 @@ impl ControlServer {
             }
             if first {
                 first = false;
-                if let Ok(attach) = serde_json::from_slice::<taskmaster_proto::AttachRequest>(&line) {
+                if let Ok(attach) = serde_json::from_slice::<taskmaster_proto::AttachRequest>(&line)
+                {
                     if attach.role != taskmaster_proto::ClientRole::Desktop
                         || attach
                             .control_protocol
@@ -638,7 +639,9 @@ impl ControlServer {
             None,
             crate::events::Filter::new(
                 Some(vec![p.session_id.0.clone()]),
-                Some(vec![taskmaster_proto::EventName::SESSION_UPDATED.to_string()]),
+                Some(vec![
+                    taskmaster_proto::EventName::SESSION_UPDATED.to_string(),
+                ]),
             ),
         );
 
@@ -1232,12 +1235,15 @@ impl ControlServer {
 
         // Join sessions by worktree path (fallback cwd); a live session wins
         // over an exited one sharing the path.
-        let mut session_by_path: std::collections::HashMap<String, &taskmaster_proto::SessionRecord> =
-            std::collections::HashMap::new();
+        let mut session_by_path: std::collections::HashMap<
+            String,
+            &taskmaster_proto::SessionRecord,
+        > = std::collections::HashMap::new();
         let running = |record: &taskmaster_proto::SessionRecord| {
             !matches!(
                 record.status,
-                taskmaster_proto::SessionStatus::Exited(_) | taskmaster_proto::SessionStatus::Unknown
+                taskmaster_proto::SessionStatus::Exited(_)
+                    | taskmaster_proto::SessionStatus::Unknown
             )
         };
         for record in &records {
@@ -1465,11 +1471,12 @@ impl ControlServer {
                 record.worktree_path = None;
                 record.git_branch = Some(branch);
                 record.transcript_path = if local { transcript } else { None };
-                record.status = taskmaster_proto::SessionStatus::Exited(taskmaster_proto::ExitInfo {
-                    reason: taskmaster_proto::ExitReason::Exited,
-                    code: Some(0),
-                    signal: None,
-                });
+                record.status =
+                    taskmaster_proto::SessionStatus::Exited(taskmaster_proto::ExitInfo {
+                        reason: taskmaster_proto::ExitReason::Exited,
+                        code: Some(0),
+                        signal: None,
+                    });
                 record.needs_input = None;
                 record.hibernation = None;
                 record.memory_bytes = None;
@@ -2409,8 +2416,11 @@ impl ControlServer {
             .into_iter()
             .find(|record| record.id.0 == id)
         {
-            self.events
-                .publish_encoded(taskmaster_proto::EventName::SESSION_UPDATED, &record, Some(id));
+            self.events.publish_encoded(
+                taskmaster_proto::EventName::SESSION_UPDATED,
+                &record,
+                Some(id),
+            );
         }
     }
 
@@ -3235,7 +3245,8 @@ fn agent_started_working(registry: &Arc<Mutex<Registry>>, session_id: &str) -> b
     with_session(registry, session_id, |session| {
         matches!(
             session.view().status,
-            taskmaster_proto::SessionStatus::Working | taskmaster_proto::SessionStatus::NeedsInput(_)
+            taskmaster_proto::SessionStatus::Working
+                | taskmaster_proto::SessionStatus::NeedsInput(_)
         )
     })
     .unwrap_or(false)

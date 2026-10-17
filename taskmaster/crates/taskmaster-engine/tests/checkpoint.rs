@@ -43,10 +43,13 @@ fn shell_spec(
 ) -> taskmaster_engine::session::SessionSpec {
     taskmaster_engine::session::SessionSpec {
         id: id.into(),
-        pty: taskmaster_engine::PtySpec::new(vec!["/bin/sh".into(), "-c".into(), script.into()], "/tmp")
-            .env("PATH", "/usr/bin:/bin")
-            .env("TERM", "xterm-256color")
-            .size(80, 24),
+        pty: taskmaster_engine::PtySpec::new(
+            vec!["/bin/sh".into(), "-c".into(), script.into()],
+            "/tmp",
+        )
+        .env("PATH", "/usr/bin:/bin")
+        .env("TERM", "xterm-256color")
+        .size(80, 24),
         manifest_id: "shell".into(),
         authority: taskmaster_engine::Authority::ProcessOnly,
         logs_dir: logs.to_path_buf(),

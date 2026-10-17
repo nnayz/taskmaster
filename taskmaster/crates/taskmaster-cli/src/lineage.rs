@@ -174,7 +174,9 @@ impl SessionLineage {
             Some(title) => format!("id:{} ({title})", caller.0),
             None => format!("id:{}", caller.0),
         };
-        format!("[message from {who}, channel: taskmaster — reply with send_prompt to that id]\n\n{text}")
+        format!(
+            "[message from {who}, channel: taskmaster — reply with send_prompt to that id]\n\n{text}"
+        )
     }
 
     pub fn write_policy() -> &'static str {

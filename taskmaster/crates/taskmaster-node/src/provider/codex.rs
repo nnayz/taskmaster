@@ -3,9 +3,9 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use taskmaster_proto::LoginMode;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use taskmaster_proto::LoginMode;
 
 use crate::error::{NodeError, NodeResult};
 

@@ -157,7 +157,9 @@ pub fn deadline_from_secs(seconds: f64) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use taskmaster_proto::{AgentKind, DateMillis, ProjectId, Resumability, SessionStatus, TitleSource};
+    use taskmaster_proto::{
+        AgentKind, DateMillis, ProjectId, Resumability, SessionStatus, TitleSource,
+    };
 
     fn record(id: &str, title: &str) -> SessionRecord {
         SessionRecord {

@@ -1269,7 +1269,9 @@ fn append_background_quads(
     let mut col = 0;
     while col < row.len() {
         let cell = row[col];
-        let inverse = cell.style.contains(taskmaster_proto::grid::TermStyle::INVERSE);
+        let inverse = cell
+            .style
+            .contains(taskmaster_proto::grid::TermStyle::INVERSE);
         if !inverse && is_default_background(cell.bg) {
             col += 1;
             continue;
@@ -1278,7 +1280,9 @@ fn append_background_quads(
         let mut end = col + 1;
         while end < row.len() {
             let next = row[end];
-            let next_inverse = next.style.contains(taskmaster_proto::grid::TermStyle::INVERSE);
+            let next_inverse = next
+                .style
+                .contains(taskmaster_proto::grid::TermStyle::INVERSE);
             if next_inverse != inverse || theme.resolve_cell(next).background != color {
                 break;
             }

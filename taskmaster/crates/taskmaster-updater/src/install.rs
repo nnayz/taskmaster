@@ -258,7 +258,10 @@ mod tests {
             "new"
         );
         assert!(
-            !directory.path().join("taskmaster.app.taskmaster-previous").exists(),
+            !directory
+                .path()
+                .join("taskmaster.app.taskmaster-previous")
+                .exists(),
             "the backup is discarded once the swap succeeds"
         );
         assert!(String::from_utf8_lossy(&output.stdout).contains("relaunched"));
@@ -283,7 +286,12 @@ mod tests {
             "old",
             "the original bundle must be restored byte for byte"
         );
-        assert!(!directory.path().join("taskmaster.app.taskmaster-previous").exists());
+        assert!(
+            !directory
+                .path()
+                .join("taskmaster.app.taskmaster-previous")
+                .exists()
+        );
     }
 
     #[test]
@@ -318,7 +326,11 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp dir");
         let source = directory.path().join("source");
         fs::create_dir_all(source.join("taskmaster.app/Contents/MacOS")).expect("bundle layout");
-        fs::write(source.join("taskmaster.app/Contents/MacOS/taskmaster"), b"binary").expect("binary");
+        fs::write(
+            source.join("taskmaster.app/Contents/MacOS/taskmaster"),
+            b"binary",
+        )
+        .expect("binary");
 
         let archive = directory.path().join("taskmaster.zip");
         let status = Command::new("/usr/bin/ditto")

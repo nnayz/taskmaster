@@ -7,12 +7,12 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tokio::sync::{RwLock, broadcast, mpsc, oneshot, watch};
-use tokio::task::JoinHandle;
 use taskmaster_proto::control::{ControlError, ControlMessage, JsonValue, encode_line};
 use taskmaster_proto::methods::*;
 use taskmaster_proto::model::{Project, ProjectId, SessionId, SessionRecord, WorktreeInfo};
 use taskmaster_proto::paths::TaskmasterPaths;
+use tokio::sync::{RwLock, broadcast, mpsc, oneshot, watch};
+use tokio::task::JoinHandle;
 
 use crate::connection::ActiveConnection;
 use crate::state::{ConnectionState, EventEnvelope};
@@ -360,7 +360,8 @@ impl DaemonClient {
     pub async fn companion_sessions(
         &self,
         page: &taskmaster_companion_api::PageRequest,
-    ) -> Result<taskmaster_companion_api::Page<taskmaster_companion_api::Session>, ClientError> {
+    ) -> Result<taskmaster_companion_api::Page<taskmaster_companion_api::Session>, ClientError>
+    {
         self.core
             .request_typed(
                 "companion.sessions",
@@ -372,7 +373,8 @@ impl DaemonClient {
     pub async fn companion_projects(
         &self,
         page: &taskmaster_companion_api::PageRequest,
-    ) -> Result<taskmaster_companion_api::Page<taskmaster_companion_api::Project>, ClientError> {
+    ) -> Result<taskmaster_companion_api::Page<taskmaster_companion_api::Project>, ClientError>
+    {
         self.core
             .request_typed(
                 "companion.projects",

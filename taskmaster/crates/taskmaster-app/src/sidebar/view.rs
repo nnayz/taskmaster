@@ -10,7 +10,6 @@ use gpui::{
     Render, Rgba, Role, ScrollHandle, SharedString, Task, Window, anchored, deferred, div,
     linear_color_stop, linear_gradient, point, prelude::*, px,
 };
-use tokio::sync::mpsc;
 use taskmaster_proto::remote_pty::PersistenceCapability;
 use taskmaster_proto::{
     AgentKind as ProtoAgentKind, AttentionLevel as ProtoAttentionLevel, ProjectId, SessionId,
@@ -21,6 +20,7 @@ use taskmaster_ui::{
     HoverMarquee, Ink, LoadingIndicator, Metrics, Radius, RowFill, SemanticColors, Space,
     StatusGlyph, StatusState, Typo,
 };
+use tokio::sync::mpsc;
 
 use crate::account_menu::AccountMenu;
 use crate::macos::sf_symbols::{SymbolWeight, sf_symbol, sf_symbol_weighted};
@@ -193,7 +193,8 @@ impl Sidebar {
             directory_picker_open: false,
         };
         // Preview-only hook so headless screenshots can verify popover layout.
-        if preview && std::env::var("TASKMASTER_SIDEBAR_POPOVER").is_ok_and(|value| value == "new-agent")
+        if preview
+            && std::env::var("TASKMASTER_SIDEBAR_POPOVER").is_ok_and(|value| value == "new-agent")
         {
             sidebar.ui.popover = Some(Popover::NewAgent {
                 directory: None,
@@ -1209,7 +1210,8 @@ impl Sidebar {
         let hovered = self.ui.hovered_session.as_ref() == Some(&id);
         let archived = session.is_archived();
         let hibernated = session.hibernation.is_some();
-        let ended = matches!(session.status, taskmaster_proto::SessionStatus::Exited(_)) && !archived;
+        let ended =
+            matches!(session.status, taskmaster_proto::SessionStatus::Exited(_)) && !archived;
         let host_label = session.host.as_ref().map(|host| {
             self.store
                 .read()
@@ -4138,7 +4140,9 @@ struct AgentPickerOption {
     unavailable_detail: Option<String>,
 }
 
-fn agent_picker_options(catalog: &taskmaster_proto::AgentReadinessResult) -> Vec<AgentPickerOption> {
+fn agent_picker_options(
+    catalog: &taskmaster_proto::AgentReadinessResult,
+) -> Vec<AgentPickerOption> {
     let mut options: Vec<_> = crate::agent_catalog::agent_options(catalog)
         .into_iter()
         .map(|option| {
@@ -4297,7 +4301,8 @@ pub(crate) fn validate_workspace_root(root: &str) -> Result<String, String> {
     if !metadata.is_dir() {
         return Err("The selected path is not a folder.".into());
     }
-    fs::read_dir(&canonical).map_err(|error| format!("Taskmaster cannot access this folder: {error}"))?;
+    fs::read_dir(&canonical)
+        .map_err(|error| format!("Taskmaster cannot access this folder: {error}"))?;
     Ok(canonical.to_string_lossy().into_owned())
 }
 

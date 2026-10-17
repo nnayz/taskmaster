@@ -1,12 +1,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
 use taskmaster_proto::control::{
     ControlError, ControlMessage, MAX_CONTROL_LINE_BYTES, decode_line, encode_line,
 };
 use taskmaster_proto::{NODE_PROTOCOL_VERSION, NodeHelloParams, NodeMethod};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 
 use crate::error::{NodeError, NodeResult};
 use crate::service::NodeService;
@@ -153,8 +153,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use taskmaster_proto::{NodeHelloResult, NodeStatusResult};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     use crate::{NodeConfig, NodePaths};
 

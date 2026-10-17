@@ -22,13 +22,13 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use taskmaster_client::{ClientError, ConnectionState, DaemonClient};
+use taskmaster_companion_api::*;
 use tokio::{
     net::TcpListener,
     sync::{Semaphore, broadcast, watch},
     task::JoinSet,
 };
-use taskmaster_client::{ClientError, ConnectionState, DaemonClient};
-use taskmaster_companion_api::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);

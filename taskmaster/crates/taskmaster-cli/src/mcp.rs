@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use serde_json::{Map, Value, json};
 use taskmaster_proto::orchestration::{
-    CREATE_TASKMASTER_SESSION_TOOL, canonical_tool_name, create_session_tool_definition, mcp_instructions,
+    CREATE_TASKMASTER_SESSION_TOOL, canonical_tool_name, create_session_tool_definition,
+    mcp_instructions,
 };
 use taskmaster_proto::{
     AgentKind, EventsSubscribeParams, EventsWaitParams, Method, SendTextParams, SessionId,
@@ -402,7 +403,10 @@ fn spawn_kind_with_default(args: &Value, configured: Option<String>) -> String {
 
 fn configured_default_agent() -> Option<String> {
     let home = env::var_os("HOME").map(PathBuf::from)?;
-    let bytes = std::fs::read(taskmaster_proto::paths::TaskmasterPaths::preferences_file(home)).ok()?;
+    let bytes = std::fs::read(taskmaster_proto::paths::TaskmasterPaths::preferences_file(
+        home,
+    ))
+    .ok()?;
     let preferences: Value = serde_json::from_slice(&bytes).ok()?;
     default_agent_from_preferences(&preferences)
 }
@@ -941,15 +945,16 @@ fn summarize_children(args: &Value) -> Result<Value, CliError> {
 }
 
 fn screen_tail(id: &SessionId, rows: usize) -> Result<String, CliError> {
-    let result: taskmaster_proto::ReadScreenResult = conn::with_conn(Duration::from_secs(3), |conn| {
-        conn.request(
-            Method::SESSION_READ_SCREEN,
-            &SessionIdParams {
-                session_id: id.clone(),
-            },
-            Duration::from_secs(3),
-        )
-    })?;
+    let result: taskmaster_proto::ReadScreenResult =
+        conn::with_conn(Duration::from_secs(3), |conn| {
+            conn.request(
+                Method::SESSION_READ_SCREEN,
+                &SessionIdParams {
+                    session_id: id.clone(),
+                },
+                Duration::from_secs(3),
+            )
+        })?;
     let lines: Vec<_> = result
         .text
         .split('\n')
@@ -1145,7 +1150,10 @@ mod tests {
             .expect("required");
         assert!(!required.iter().any(|field| field == "kind"));
         assert!(required.iter().any(|field| field == "cwd"));
-        assert_eq!(canonical_tool_name("spawn_agent"), "create_taskmaster_session");
+        assert_eq!(
+            canonical_tool_name("spawn_agent"),
+            "create_taskmaster_session"
+        );
         let legacy_error = call("spawn_agent", &json!({ "kind": "not-an-agent" }))
             .expect_err("invalid legacy spawn call");
         assert!(

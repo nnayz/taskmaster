@@ -54,7 +54,11 @@ impl SidebarPreviewFixture {
         // A stable clock makes screenshot output deterministic while retaining
         // the exact relative intervals used by the Swift fixture.
         let now = 1_750_000_000_000.0;
-        let taskmaster = project("preview-taskmaster", "/Users/preview/Projects/taskmaster", "Taskmaster");
+        let taskmaster = project(
+            "preview-taskmaster",
+            "/Users/preview/Projects/taskmaster",
+            "Taskmaster",
+        );
         let mldrills = project(
             "preview-mldrills",
             "/Users/preview/Projects/mldrills",
@@ -450,7 +454,9 @@ fn preview_launch_recipes(taskmaster: &ProjectId) -> Vec<LaunchRecipe> {
             id: "preview-recipe-review".into(),
             name: "Review this PR".into(),
             agent: AgentKind::CLAUDE_CODE,
-            project: RecipeProject::Project { id: taskmaster.clone() },
+            project: RecipeProject::Project {
+                id: taskmaster.clone(),
+            },
             host: None,
             worktree: None,
             initial_prompt: "Review the open pull request and leave concrete comments.".into(),
@@ -460,7 +466,9 @@ fn preview_launch_recipes(taskmaster: &ProjectId) -> Vec<LaunchRecipe> {
             id: "preview-recipe-worktree".into(),
             name: "Investigate a bug in a fresh worktree".into(),
             agent: AgentKind::CODEX,
-            project: RecipeProject::Project { id: taskmaster.clone() },
+            project: RecipeProject::Project {
+                id: taskmaster.clone(),
+            },
             host: None,
             worktree: Some(RecipeWorktree {
                 create: true,

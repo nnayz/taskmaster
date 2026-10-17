@@ -13,9 +13,9 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use taskmaster_updater::{Release, StagedUpdate, UpdateError, Updater, UpdaterConfig};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
-use taskmaster_updater::{Release, StagedUpdate, UpdateError, Updater, UpdaterConfig};
 
 /// How long after launch the first background check runs. Long enough to stay
 /// out of the way of startup work.
@@ -482,7 +482,10 @@ mod tests {
 
     #[test]
     fn an_idle_build_just_names_its_version() {
-        assert_eq!(state(UpdatePhase::Idle, false).summary(), "Taskmaster 0.4.2");
+        assert_eq!(
+            state(UpdatePhase::Idle, false).summary(),
+            "Taskmaster 0.4.2"
+        );
         assert_eq!(
             state(UpdatePhase::UpToDate, true).summary(),
             "Taskmaster 0.4.2 is up to date"

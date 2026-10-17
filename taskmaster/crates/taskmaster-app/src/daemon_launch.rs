@@ -150,7 +150,10 @@ pub fn ensure_daemon_running(socket_path: &Path) {
 
     match daemon {
         Some(daemon) => match spawn_detached(&daemon) {
-            Ok(()) => eprintln!("taskmaster: launched bundled daemon at {}", daemon.display()),
+            Ok(()) => eprintln!(
+                "taskmaster: launched bundled daemon at {}",
+                daemon.display()
+            ),
             Err(err) => {
                 eprintln!(
                     "taskmaster: failed to launch bundled daemon {}: {err}",
@@ -207,8 +210,8 @@ fn socket_is_live(socket_path: &Path) -> bool {
 }
 
 fn probe_daemon(socket_path: &Path) -> io::Result<HelloResult> {
-    let params =
-        serde_json::to_value(HelloParams::new("taskmaster-launch-probe")).map_err(io::Error::other)?;
+    let params = serde_json::to_value(HelloParams::new("taskmaster-launch-probe"))
+        .map_err(io::Error::other)?;
     let value = control_request(socket_path, 1, Method::HELLO, Some(params))?;
     serde_json::from_value(value).map_err(|error| {
         io::Error::new(

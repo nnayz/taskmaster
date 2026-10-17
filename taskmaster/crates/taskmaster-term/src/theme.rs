@@ -607,9 +607,18 @@ mod tests {
         assert_rgba(TermTheme::TASKMASTER_DARK.ansi[2], hex(0x0dbc79));
         assert_rgba(TermTheme::TASKMASTER_DARK.ansi[4], hex(0x2472c8));
         assert_rgba(TermTheme::TASKMASTER_DARK.ansi[6], hex(0x11a8cd));
-        assert_rgba(TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.background, hex(0x000000));
-        assert_rgba(TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.foreground, hex(0xffffff));
-        assert_rgba(TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.ansi[1], hex(0xff6b6b));
+        assert_rgba(
+            TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.background,
+            hex(0x000000),
+        );
+        assert_rgba(
+            TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.foreground,
+            hex(0xffffff),
+        );
+        assert_rgba(
+            TermTheme::TASKMASTER_DARK_HIGH_CONTRAST.ansi[1],
+            hex(0xff6b6b),
+        );
         assert_eq!(TermTheme::VESPER.appearance, ThemeAppearance::Dark);
         assert_rgba(TermTheme::VESPER.background, hex(0x101010));
         assert_rgba(TermTheme::VESPER.cursor, hex(0xffc799));

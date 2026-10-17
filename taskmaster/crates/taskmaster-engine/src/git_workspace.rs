@@ -1321,9 +1321,12 @@ impl SessionGit<'_> {
             if let Ok(remote) = self.default_remote(&root) {
                 let _guard = self.acquire_mutation(&root)?;
                 let base_refspec = status.base_ref_name.as_deref().and_then(|base| {
-                    validate_ref(base, "pull-request base")
-                        .ok()
-                        .map(|_| format!("+refs/heads/{base}:refs/taskmaster/pr/{}/base", status.number))
+                    validate_ref(base, "pull-request base").ok().map(|_| {
+                        format!(
+                            "+refs/heads/{base}:refs/taskmaster/pr/{}/base",
+                            status.number
+                        )
+                    })
                 });
                 let mut args = vec!["fetch", "--no-tags", "--", remote.as_str(), &head_refspec];
                 if let Some(base_refspec) = &base_refspec {
@@ -2391,8 +2394,14 @@ mod tests {
         );
         let sanitized = sanitize_remote_url("https://secret@github.com/nnayz/taskmaster.git");
         assert_eq!(sanitized, "https://github.com/nnayz/taskmaster.git");
-        assert_eq!(github_repository(&sanitized).as_deref(), Some("nnayz/taskmaster"));
-        assert_eq!(github_repository("https://gitlab.com/nnayz/taskmaster"), None);
+        assert_eq!(
+            github_repository(&sanitized).as_deref(),
+            Some("nnayz/taskmaster")
+        );
+        assert_eq!(
+            github_repository("https://gitlab.com/nnayz/taskmaster"),
+            None
+        );
     }
 
     #[test]

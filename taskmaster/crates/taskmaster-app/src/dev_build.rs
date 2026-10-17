@@ -68,7 +68,10 @@ mod tests {
         )
         .expect("dev bundle should identify itself");
 
-        assert_eq!(identity.bundle_id(), "com.taskmaster.taskmaster.dev.abc1234");
+        assert_eq!(
+            identity.bundle_id(),
+            "com.taskmaster.taskmaster.dev.abc1234"
+        );
         assert_eq!(identity.window_title(), "taskmaster dev — worktree@abc1234");
         assert_eq!(identity.marker_label(), "worktree@abc1234");
     }
@@ -76,8 +79,12 @@ mod tests {
     #[test]
     fn release_bundle_cannot_show_dev_identity() {
         assert!(
-            DevBuildIdentity::from_parts(Some("1"), Some("com.taskmaster.taskmaster"), Some("main@abc1234"),)
-                .is_none()
+            DevBuildIdentity::from_parts(
+                Some("1"),
+                Some("com.taskmaster.taskmaster"),
+                Some("main@abc1234"),
+            )
+            .is_none()
         );
     }
 

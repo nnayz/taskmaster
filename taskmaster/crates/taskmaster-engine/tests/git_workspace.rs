@@ -147,7 +147,11 @@ fn initialize_bare_remote(repo: &TestRepo, directory: &Path) {
     assert!(status.success());
     let url = format!("file://{}", directory.display());
     let rewrite = format!("url.{url}.insteadOf");
-    repo.git_args(&["config", &rewrite, "https://github.com/nnayz/taskmaster.git"]);
+    repo.git_args(&[
+        "config",
+        &rewrite,
+        "https://github.com/nnayz/taskmaster.git",
+    ]);
     repo.git([
         "remote",
         "add",
@@ -448,7 +452,8 @@ fn remote_tracking_branch_switch_creates_a_local_tracking_branch() {
     assert_eq!(listed.refs[0].short_name, "main");
     assert!(listed.refs[0].current);
     assert!(listed.refs.iter().any(|entry| {
-        entry.short_name == "origin/remote-only" && entry.kind == taskmaster_proto::GitRefKind::Remote
+        entry.short_name == "origin/remote-only"
+            && entry.kind == taskmaster_proto::GitRefKind::Remote
     }));
 
     let switched = git
@@ -804,8 +809,14 @@ exit 1
         })
         .unwrap();
     assert!(String::from_utf8_lossy(&compared.patch).contains("pull request"));
-    assert_eq!(compared.base_ref.as_deref(), Some("refs/taskmaster/pr/12/base"));
-    assert_eq!(compared.head_ref.as_deref(), Some("refs/taskmaster/pr/12/head"));
+    assert_eq!(
+        compared.base_ref.as_deref(),
+        Some("refs/taskmaster/pr/12/base")
+    );
+    assert_eq!(
+        compared.head_ref.as_deref(),
+        Some("refs/taskmaster/pr/12/head")
+    );
     let url = parse_pr_input(
         "https://github.com/nnayz/taskmaster/pull/12/files",
         Some("nnayz/taskmaster"),
@@ -873,7 +884,10 @@ fn fork_pr_head_opens_from_the_base_repository_without_cloning() {
     let resolved = git.pr_resolve("#12").unwrap();
     assert!(resolved.same_repository);
     assert!(resolved.is_cross_repository);
-    assert_eq!(resolved.head_repository.as_deref(), Some("forker/taskmaster"));
+    assert_eq!(
+        resolved.head_repository.as_deref(),
+        Some("forker/taskmaster")
+    );
     let opened = git.pr_open("#12").unwrap();
     assert_eq!(opened.plan.ref_name, "pr/12");
     let GitCheckoutDisposition::OpenNewWorktree { path } = opened.plan.disposition else {

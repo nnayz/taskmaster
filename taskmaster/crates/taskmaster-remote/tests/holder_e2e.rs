@@ -616,10 +616,12 @@ fn signal_exit_and_holder_failure_are_reported_without_orphaning_the_agent() {
             _ => None,
         })
         .expect("epoch");
-    attach.send(RemoteMessage::Signal(taskmaster_proto::remote_pty::Signal {
-        controller_epoch: epoch,
-        signal: libc::SIGTERM,
-    }));
+    attach.send(RemoteMessage::Signal(
+        taskmaster_proto::remote_pty::Signal {
+            controller_epoch: epoch,
+            signal: libc::SIGTERM,
+        },
+    ));
     let exited = attach.receive_until(Duration::from_secs(3), |message| {
         matches!(message, RemoteMessage::ProcessExit(_))
     });

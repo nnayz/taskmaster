@@ -5,7 +5,8 @@ use sha2::{Digest, Sha256};
 
 fn main() {
     println!("cargo:rerun-if-env-changed=TASKMASTER_REMOTE_BUILD_ID");
-    let build_id = std::env::var("TASKMASTER_REMOTE_BUILD_ID").unwrap_or_else(|_| source_build_id());
+    let build_id =
+        std::env::var("TASKMASTER_REMOTE_BUILD_ID").unwrap_or_else(|_| source_build_id());
     assert!(
         !build_id.is_empty()
             && build_id.len() <= 128

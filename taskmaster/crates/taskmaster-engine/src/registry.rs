@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use taskmaster_proto::{DateMillis, ExitInfo, ExitReason, SessionRecord, SessionStatus, TitleSource};
+use taskmaster_proto::{
+    DateMillis, ExitInfo, ExitReason, SessionRecord, SessionStatus, TitleSource,
+};
 
 use crate::detect::ManifestEngine;
 use crate::holder::{HolderClient, HolderManagerPaths, HolderPaths};
@@ -1029,7 +1031,9 @@ pub(crate) fn session_project_id(root: &str, host: Option<&str>) -> taskmaster_p
 #[cfg(test)]
 mod tests {
     use super::*;
-    use taskmaster_proto::{AgentKind, DateMillis, ProjectId, Resumability, SessionId, TitleSource};
+    use taskmaster_proto::{
+        AgentKind, DateMillis, ProjectId, Resumability, SessionId, TitleSource,
+    };
 
     fn record(id: &str) -> SessionRecord {
         SessionRecord {

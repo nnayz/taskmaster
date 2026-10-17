@@ -764,7 +764,8 @@ impl RootView {
                 .detach();
             }
         }
-        if preview && std::env::var("TASKMASTER_PANEL_NATIVE_SMOKE").is_ok_and(|value| value == "1") {
+        if preview && std::env::var("TASKMASTER_PANEL_NATIVE_SMOKE").is_ok_and(|value| value == "1")
+        {
             cx.spawn_in(window, async move |this, cx| {
                 cx.background_executor().timer(Duration::from_millis(500)).await;
                 let _ = this.update_in(cx, |this, window, cx| {

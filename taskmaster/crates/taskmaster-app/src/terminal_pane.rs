@@ -14,8 +14,6 @@ use gpui::{
     StatefulInteractiveElement, Subscription, Task, Window, actions, div, font, prelude::*, px,
     rgba,
 };
-use tokio::runtime::Handle;
-use tokio::sync::{mpsc, watch};
 use taskmaster_client::attachment::{
     AttachmentClosed, SessionAttachment, SessionAttachmentHandle, SessionAttachmentInput,
     TerminalChunk,
@@ -45,6 +43,8 @@ use taskmaster_ui::{
     AgentKind as UiAgentKind, Fill, FloatingSurface, Ink, Metrics, Radius, SemanticColors,
     StatusGlyph, StatusState, Typo,
 };
+use tokio::runtime::Handle;
+use tokio::sync::{mpsc, watch};
 
 use crate::image_attachment::{
     AttachmentDecision, ImageStore, StagedImage, capability_from_descriptor, decide_drop,
@@ -522,7 +522,11 @@ enum PaneEvent {
     AttachmentState(SessionId, AttachmentState),
     Chunk(SessionId, TerminalChunk),
     FindSnapshot(SessionId, SearchRequest, FindSnapshot),
-    ScrollbackCells(SessionId, taskmaster_proto::ReadScrollbackCellsResult, usize),
+    ScrollbackCells(
+        SessionId,
+        taskmaster_proto::ReadScrollbackCellsResult,
+        usize,
+    ),
     ScrollbackFailed(SessionId),
     AttachmentUploadFinished(Arc<()>, Result<Vec<String>, String>),
 }
@@ -3882,7 +3886,9 @@ impl Render for TerminalPane {
 
         let root_id = match &self.session_source {
             SessionSource::FollowSelection => SharedString::from("taskmaster-terminal-root"),
-            SessionSource::Fixed(id) => SharedString::from(format!("taskmaster-terminal-root-{}", id.0)),
+            SessionSource::Fixed(id) => {
+                SharedString::from(format!("taskmaster-terminal-root-{}", id.0))
+            }
         };
         div()
             .id(root_id)
@@ -4207,7 +4213,9 @@ fn status_state(session: &SessionRecord) -> StatusState {
         },
         taskmaster_proto::AttentionLevel::DoneUnseen => StatusState::DoneUnseen,
         taskmaster_proto::AttentionLevel::IdleSeen => StatusState::IdleSeen,
-        taskmaster_proto::AttentionLevel::None | taskmaster_proto::AttentionLevel::Unknown => StatusState::None,
+        taskmaster_proto::AttentionLevel::None | taskmaster_proto::AttentionLevel::Unknown => {
+            StatusState::None
+        }
     }
 }
 
@@ -4493,8 +4501,8 @@ mod tests {
         server: &mut tokio::net::UnixStream,
         state: &taskmaster_proto::terminal::AttachmentControlState,
     ) {
-        use tokio::io::AsyncWriteExt;
         use taskmaster_proto::frames::{Frame, FrameCodec, FrameType};
+        use tokio::io::AsyncWriteExt;
         server
             .write_all(
                 &FrameCodec::encode(&Frame::new(
@@ -5651,7 +5659,8 @@ mod tests {
     fn remote_upload_failure_does_not_build_a_local_paste_payload() {
         let failed: Result<Vec<String>, String> = Err("scp failed".into());
         assert!(failed.is_err());
-        let success = vec!["/home/dev/.cache/taskmaster/sessions/s_abc/attachments/img-1.png".to_owned()];
+        let success =
+            vec!["/home/dev/.cache/taskmaster/sessions/s_abc/attachments/img-1.png".to_owned()];
         assert!(!paste_paths(&success).starts_with("/tmp/"));
         assert!(!paste_paths(&success).contains("/var/folders"));
     }

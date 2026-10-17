@@ -76,7 +76,10 @@ impl RegistryHost {
 
 fn configured_default_agent() -> Option<String> {
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
-    let bytes = std::fs::read(taskmaster_proto::paths::TaskmasterPaths::preferences_file(home)).ok()?;
+    let bytes = std::fs::read(taskmaster_proto::paths::TaskmasterPaths::preferences_file(
+        home,
+    ))
+    .ok()?;
     let preferences: Value = serde_json::from_slice(&bytes).ok()?;
     let saved = preferences
         .get("defaultAgent")

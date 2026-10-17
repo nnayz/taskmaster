@@ -35,7 +35,8 @@ fn rpc(server: &Arc<ControlServer>, method: &str, params: Value) -> Result<Value
         .unwrap();
     let mut line = Vec::new();
     BufReader::new(socket).read_until(b'\n', &mut line).unwrap();
-    let ControlMessage::Response { result, .. } = taskmaster_proto::control::decode_line(&line).unwrap()
+    let ControlMessage::Response { result, .. } =
+        taskmaster_proto::control::decode_line(&line).unwrap()
     else {
         panic!("response")
     };

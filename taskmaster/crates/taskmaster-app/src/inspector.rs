@@ -1416,7 +1416,9 @@ impl WorkbenchInspector {
                             client
                                 .git_stage(session_id, paths_to_strings(&paths))
                                 .await?;
-                            Ok::<String, taskmaster_client::ClientError>("Changes staged".to_owned())
+                            Ok::<String, taskmaster_client::ClientError>(
+                                "Changes staged".to_owned(),
+                            )
                         }
                         ReviewAction::Unstage(paths) => {
                             client
@@ -6088,7 +6090,8 @@ fn briefing_state(session: &SessionRecord) -> Option<BriefingState> {
             Some(taskmaster_proto::RiskHint::Destructive) => "destructive",
             Some(taskmaster_proto::RiskHint::Network) => "network",
             Some(taskmaster_proto::RiskHint::FileWrite) => "file write",
-            Some(taskmaster_proto::RiskHint::Neutral | taskmaster_proto::RiskHint::Unknown) | None => "neutral",
+            Some(taskmaster_proto::RiskHint::Neutral | taskmaster_proto::RiskHint::Unknown)
+            | None => "neutral",
         };
         return Some(BriefingState::NeedsInput {
             kind,
@@ -6164,7 +6167,9 @@ fn plain_session_status(session: &SessionRecord) -> &'static str {
         SessionStatus::Starting => "Starting",
         SessionStatus::Working => "Working",
         SessionStatus::NeedsInput(_) => "Needs input",
-        SessionStatus::Idle if session.attention() == taskmaster_proto::AttentionLevel::DoneUnseen => {
+        SessionStatus::Idle
+            if session.attention() == taskmaster_proto::AttentionLevel::DoneUnseen =>
+        {
             "Finished unseen"
         }
         SessionStatus::Idle => "Idle",
@@ -6186,8 +6191,12 @@ fn persistence_briefing(
     persistence: taskmaster_proto::remote_pty::PersistenceCapability,
 ) -> (&'static str, Option<gpui::Rgba>) {
     match persistence {
-        taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach => ("native-detach", None),
-        taskmaster_proto::remote_pty::PersistenceCapability::UserSupervisor => ("user-supervisor", None),
+        taskmaster_proto::remote_pty::PersistenceCapability::NativeDetach => {
+            ("native-detach", None)
+        }
+        taskmaster_proto::remote_pty::PersistenceCapability::UserSupervisor => {
+            ("user-supervisor", None)
+        }
         taskmaster_proto::remote_pty::PersistenceCapability::NonPersistent => {
             ("non-persistent · no detach", Some(Ink::DANGER))
         }
@@ -6229,7 +6238,9 @@ fn session_status(session: &SessionRecord, colors: SemanticColors) -> (&'static 
                 },
             )
         }
-        SessionStatus::Idle if session.attention() == taskmaster_proto::AttentionLevel::DoneUnseen => {
+        SessionStatus::Idle
+            if session.attention() == taskmaster_proto::AttentionLevel::DoneUnseen =>
+        {
             ("Finished", Ink::FRESH)
         }
         SessionStatus::Idle => ("Idle", colors.secondary),

@@ -384,8 +384,8 @@ mod tests {
     use std::fs;
     use std::time::Duration;
 
-    use tempfile::TempDir;
     use taskmaster_client::DaemonClient;
+    use tempfile::TempDir;
 
     use super::*;
 
@@ -496,7 +496,10 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "set TASKMASTER_LIVE_HISTORY_TEST=1 to resume a real Claude conversation"]
     async fn live_historical_claude_resume_smoke() {
-        assert_eq!(std::env::var("TASKMASTER_LIVE_HISTORY_TEST").as_deref(), Ok("1"));
+        assert_eq!(
+            std::env::var("TASKMASTER_LIVE_HISTORY_TEST").as_deref(),
+            Ok("1")
+        );
         let client = DaemonClient::new();
         client.connect();
         client

@@ -498,7 +498,10 @@ fn generic_transcript(session: &SessionRecord) -> Vec<Line> {
         AgentKind::CLAUDE_CODE_ID => claude_chrome(session),
         AgentKind::CURSOR_ID => cursor_chrome(session, "composer-1.5"),
         AgentKind::GEMINI_ID => gemini_chrome(session, "gemini-2.5-pro"),
-        AgentKind::SHELL_ID => vec![color(2, format!("nayz@taskmaster {} %", project_name(session)))],
+        AgentKind::SHELL_ID => vec![color(
+            2,
+            format!("nayz@taskmaster {} %", project_name(session)),
+        )],
         _ => {
             let mut lines = codex_chrome(session);
             lines.push(blank());
@@ -1169,7 +1172,10 @@ mod tests {
             .join("\n")
     }
 
-    fn session<'a>(fixture: &'a SidebarPreviewFixture, id: &str) -> &'a taskmaster_proto::SessionRecord {
+    fn session<'a>(
+        fixture: &'a SidebarPreviewFixture,
+        id: &str,
+    ) -> &'a taskmaster_proto::SessionRecord {
         fixture
             .list
             .sessions

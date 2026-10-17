@@ -6,8 +6,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use image::{GenericImageView, ImageFormat, ImageReader};
-use tempfile::NamedTempFile;
 use taskmaster_proto::{AgentDescriptor, ImageAttachmentCapability};
+use tempfile::NamedTempFile;
 
 pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 pub const MAX_IMAGE_DIMENSION: u32 = 8192;

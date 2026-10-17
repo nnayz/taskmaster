@@ -190,7 +190,10 @@ mod tests {
     #[test]
     fn prefixes_and_boundaries_outrank_buried_matches() {
         assert_eq!(
-            ranked("taskmaster", &["mldrills-taskmaster-calm-marten", "taskmaster"]),
+            ranked(
+                "taskmaster",
+                &["mldrills-taskmaster-calm-marten", "taskmaster"]
+            ),
             ["taskmaster", "mldrills-taskmaster-calm-marten"]
         );
         assert_eq!(

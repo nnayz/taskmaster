@@ -9,8 +9,7 @@ use sha2::{Digest, Sha256};
 use taskmaster_proto::remote_pty::{HelperProbe, PROTOCOL_MAJOR};
 
 pub const PLATFORM_PROBE_MARKER: &[u8] = b"__TASKMASTER_PLATFORM_V1__\0";
-pub const PLATFORM_PROBE_COMMAND: &str =
-    "printf '__TASKMASTER_PLATFORM_V1__\\0%s\\0%s\\0%s\\0' \"$(uname -s)\" \"$(uname -m)\" \"$HOME\"";
+pub const PLATFORM_PROBE_COMMAND: &str = "printf '__TASKMASTER_PLATFORM_V1__\\0%s\\0%s\\0%s\\0' \"$(uname -s)\" \"$(uname -m)\" \"$HOME\"";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum RemoteTarget {
@@ -355,7 +354,8 @@ mod tests {
             ("Linux", "arm64", RemoteTarget::LinuxAarch64),
             ("Darwin", "aarch64", RemoteTarget::MacosAarch64),
         ] {
-            let output = format!("banner\n__TASKMASTER_PLATFORM_V1__\0{os}\0{arch}\0/home/dev\0noise");
+            let output =
+                format!("banner\n__TASKMASTER_PLATFORM_V1__\0{os}\0{arch}\0/home/dev\0noise");
             assert_eq!(
                 PlatformProbe::parse(output.as_bytes()),
                 Ok(PlatformProbe {
