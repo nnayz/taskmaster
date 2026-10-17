@@ -6,7 +6,7 @@ import { releaseDownloads } from '../downloads.js';
 import { buildDocs, pageUrl } from './docs.mjs';
 import { render } from './render.mjs';
 import { buildSite } from './site.mjs';
-import { root } from './render.mjs';
+import { base, root } from './render.mjs';
 
 test('nested playbook steps stay inside one ordered list', () => {
   const { html } = render('1. Before you leave:\n\n   - Name every live session.\n   - Give each writer its own worktree.\n\n2. Archive what you merged.\n');
@@ -58,6 +58,9 @@ test('generated site links resolve and do not publish a second docs host', async
 });
 
 async function localExists(url, outputs) {
+  // GitHub Pages serves the site under a base path; strip it so the
+  // deployment-prefixed URLs resolve against the base-path-free outputs.
+  if (base && (url === base || url.startsWith(`${base}/`))) url = url.slice(base.length) || '/';
   if (url === '/') return outputs.has('index.html');
   if (url.endsWith('/')) return outputs.has(`${url.slice(1)}index.html`);
   if (outputs.has(url.slice(1))) return true;
