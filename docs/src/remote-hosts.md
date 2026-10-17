@@ -79,7 +79,9 @@ If the Helper cannot be verified, Zeus fails closed with a structured
 error. It will not fall back to `tmux`.
 
 Prefer a dedicated non-admin account and narrowly scoped credentials. See
-the [security model](security-model.md).
+the [security model](security-model.md). The transport design itself —
+bootstrap, holder lifecycle, protocol, and performance gates — is documented
+in the Developer Guide: [Remote transport](dev/remote-transport.html).
 
 ## First-party nodes
 

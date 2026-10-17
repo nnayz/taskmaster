@@ -18,6 +18,15 @@
 - [iOS Companion](ios-companion.md)
 - [Updates](updates.md)
 
+# Playbooks
+
+- [Running parallel agents in separate worktrees](playbooks/parallel-agents-worktrees.md)
+- [Delegating a task and following parent/child sessions](playbooks/delegate-a-task.md)
+- [Reviewing an agent's changes and opening a pull request](playbooks/review-and-pull-request.md)
+- [Choosing local or remote execution](playbooks/local-or-remote.md)
+- [Diagnosing a session that is waiting](playbooks/session-waiting-for-input.md)
+- [Managing idle sessions and resource limits](playbooks/idle-sessions-and-resources.md)
+
 # Safety & privacy
 
 - [Security model](security-model.md)
@@ -26,7 +35,5 @@
 
 # Reference
 
-- [Companion architecture](companion-architecture.md)
 - [Support](support.md)
-- [Screenshot soak test](screenshot-soak.md)
 - [Roadmap](roadmap.md)

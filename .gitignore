@@ -21,6 +21,7 @@ zeus/target/
 
 # mdBook output
 docs/book/
+developer-docs/book/
 
 # Product site
 site/node_modules/
