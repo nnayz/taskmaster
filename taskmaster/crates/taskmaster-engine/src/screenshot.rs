@@ -854,7 +854,7 @@ mod tests {
             Some("com.taskmaster.taskmaster"),
         ));
         let request = ScreenshotRequest {
-            window: Some("zeu".to_owned()),
+            window: Some("taskmaste".to_owned()),
             ..Default::default()
         };
         let error = capture_with_backend(&request, &mut backend).expect_err("ambiguous");
