@@ -14,6 +14,7 @@ export const GITHUB_OWNER = 'nnayz';
 export const GITHUB_REPO = 'zeus';
 export const GITHUB = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 export const DOCS = `${base}/docs/`;
+export const DEVELOPER_DOCS = `${base}/docs/dev/`;
 export const SECURITY_EMAIL = 'hi@nasrul.info';
 
 export const releases: Release[] = [
