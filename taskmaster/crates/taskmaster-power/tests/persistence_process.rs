@@ -1,12 +1,26 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
 
 use taskmaster_power::persistence::{LockedStateDirectory, PersistenceError};
 
 const CHILD_ENV: &str = "TASKMASTER_POWER_LOCK_CHILD";
+
+/// `flock` releases only when every descriptor of the open file description is
+/// closed, and a forked child keeps a pre-`exec` copy of every descriptor
+/// alive. Serialize these process-lock tests so one test's fork cannot delay
+/// another test's release and re-acquisition.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    SERIAL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn uid() -> u32 {
     rustix::process::getuid().as_raw()
@@ -29,6 +43,7 @@ fn child_lock_probe() {
 
 #[test]
 fn a_second_process_cannot_enter_recovery_while_the_helper_is_live() {
+    let _serial = serial();
     let directory = fixture();
     let first = LockedStateDirectory::acquire(directory.path(), uid(), [3; 16]).unwrap();
     let status = Command::new(std::env::current_exe().unwrap())
@@ -46,12 +61,25 @@ fn a_second_process_cannot_enter_recovery_while_the_helper_is_live() {
 
 #[test]
 fn lifetime_lock_is_closed_across_exec() {
+    let _serial = serial();
     let directory = fixture();
     let first = LockedStateDirectory::acquire(directory.path(), uid(), [3; 16]).unwrap();
-    let mut unrelated_child = Command::new("/bin/sleep").arg("1").spawn().unwrap();
+    // The successor check must start only after the child has reached `exec`:
+    // a pre-`exec` copy of the inherited descriptor keeps the flock alive past
+    // `drop`, and a `CLOEXEC` descriptor is closed exactly at `exec`.
+    let mut unrelated_child = Command::new("/bin/sh")
+        .args(["-c", "echo ready; exec sleep 5"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut ready = String::new();
+    BufReader::new(unrelated_child.stdout.take().unwrap())
+        .read_line(&mut ready)
+        .unwrap();
+    assert_eq!(ready.trim(), "ready");
     drop(first);
     LockedStateDirectory::acquire(directory.path(), uid(), [4; 16])
         .expect("an exec child must not inherit the Helper lifetime lock");
-    unrelated_child.kill().unwrap();
+    let _ = unrelated_child.kill();
     unrelated_child.wait().unwrap();
 }
