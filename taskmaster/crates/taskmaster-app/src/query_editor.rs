@@ -437,9 +437,9 @@ mod tests {
     fn typing_appends_and_backspace_removes_one_grapheme() {
         let mut editor = seeded("taskmaster");
         assert_eq!(editor.text(), "taskmaster");
-        assert_eq!(editor.cursor(), 4);
+        assert_eq!(editor.cursor(), 10);
         editor.delete_backward(Motion::Character);
-        assert_eq!(editor.text(), "zeu");
+        assert_eq!(editor.text(), "taskmaste");
         assert!(editor.selection().is_none());
     }
 
@@ -450,7 +450,7 @@ mod tests {
         assert_eq!(editor.selected_text(), Some("kairoskraft"));
         editor.insert("taskmaster");
         assert_eq!(editor.text(), "taskmaster");
-        assert_eq!(editor.cursor(), 4);
+        assert_eq!(editor.cursor(), 10);
         assert!(editor.selection().is_none());
     }
 
@@ -522,9 +522,9 @@ mod tests {
         editor.move_left(Motion::Character, false);
         assert_eq!(editor.cursor(), 0);
         editor.move_right(Motion::Line, false);
-        assert_eq!(editor.cursor(), 4);
+        assert_eq!(editor.cursor(), 10);
         editor.move_right(Motion::Character, false);
-        assert_eq!(editor.cursor(), 4);
+        assert_eq!(editor.cursor(), 10);
     }
 
     #[test]
@@ -603,7 +603,7 @@ mod tests {
         let mut editor = seeded("taskmaster");
         press(&mut editor, "a", "^");
         press(&mut editor, "d", "^"); // forward delete
-        assert_eq!(editor.text(), "eus");
+        assert_eq!(editor.text(), "askmaster");
         press(&mut editor, "k", "^"); // kill to end
         assert_eq!(editor.text(), "");
     }
